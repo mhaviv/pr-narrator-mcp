@@ -1,20 +1,29 @@
 # pr-narrator-mcp
 
-An MCP (Model Context Protocol) server that generates consistent commit messages and PR content based on your custom criteria.
+[![npm version](https://img.shields.io/npm/v/pr-narrator-mcp.svg)](https://www.npmjs.com/package/pr-narrator-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
 
-## Features
+> 🎯 Generate consistent commit messages and PR content based on your custom criteria — automatically.
 
-- **Commit Message Generation**: Creates commit messages following your configured format (Conventional Commits, simple, etc.)
-- **Automatic Ticket Extraction**: Extracts ticket numbers from branch names (e.g., `feature/WTHRAPP-1234-add-login`)
-- **Smart Prefix Fallback**: Uses branch prefix (task/, bug/, feature/) when no ticket is found
-- **Configurable Rules**: Enforce imperative mood, capitalization, no trailing periods, max length
-- **Git Analysis**: Provides context about staged changes and branch history
-- **Optional Integrations**: Connect with GitHub, Jira, and other MCPs for enhanced functionality
+An MCP (Model Context Protocol) server that eliminates the hassle of vetting AI-generated commit messages and PR descriptions. Define your rules once, get perfectly formatted git documentation every time.
 
-## Installation
+## ✨ Features
+
+- 📝 **Commit Message Generation** - Creates messages following your configured format (Conventional Commits, simple, etc.)
+- 🎫 **Automatic Ticket Extraction** - Extracts ticket numbers from branch names (e.g., `feature/WTHRAPP-1234-add-login`)
+- 🏷️ **Smart Prefix Fallback** - Uses branch prefix (`task/`, `bug/`, `feature/`) when no ticket is found
+- ✅ **Configurable Rules** - Enforce imperative mood, capitalization, no trailing periods, max length
+- 📊 **Git Analysis** - Provides context about staged changes and branch history
+- 🔌 **Optional Integrations** - Connect with GitHub, Jira, and other MCPs for enhanced functionality
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-npm install pr-narrator-mcp
+npm install -g pr-narrator-mcp
 ```
 
 Or run directly with npx:
@@ -23,24 +32,113 @@ Or run directly with npx:
 npx pr-narrator-mcp
 ```
 
-## Setup in Cursor
+### Claude Desktop Configuration
 
-Add to your Cursor MCP configuration (`~/.cursor/mcp.json`):
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
 ```json
 {
   "mcpServers": {
     "pr-narrator": {
       "command": "npx",
-      "args": ["pr-narrator-mcp"]
+      "args": ["-y", "pr-narrator-mcp"]
     }
   }
 }
 ```
 
-## Configuration
+### Cursor Configuration
 
-Create a `pr-narrator.config.json` in your project root (optional - sensible defaults are used if not present):
+Add to your Cursor MCP settings (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "pr-narrator": {
+      "command": "npx",
+      "args": ["-y", "pr-narrator-mcp"]
+    }
+  }
+}
+```
+
+### VS Code Configuration
+
+Add to your VS Code settings or `.vscode/mcp.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "pr-narrator": {
+        "command": "npx",
+        "args": ["-y", "pr-narrator-mcp"]
+      }
+    }
+  }
+}
+```
+
+## 🛠️ Available Tools
+
+### Commit Tools
+
+| Tool | Description | Key Inputs |
+|------|-------------|------------|
+| `generate_commit_message` | Generate commit message from staged changes | `summary`, `type`, `scope` |
+| `validate_commit_message` | Validate message against configured rules | `message` |
+
+### PR Tools
+
+| Tool | Description | Key Inputs |
+|------|-------------|------------|
+| `generate_pr` | Generate complete PR (title + description) | `summary`, `testPlan` |
+| `generate_pr_title` | Generate just the PR title | `summary` |
+| `generate_pr_description` | Generate PR description with sections | `summary`, `testPlan` |
+
+### Utility Tools
+
+| Tool | Description | Key Inputs |
+|------|-------------|------------|
+| `get_config` | Get current pr-narrator configuration | `repoPath` |
+| `analyze_git_changes` | Analyze staged changes and branch info | `repoPath`, `includeFullDiff` |
+| `extract_tickets` | Find tickets in branch/commits | `includeCommits`, `additionalText` |
+
+### Example: Generate Commit Message
+
+```typescript
+const result = await generate_commit_message({
+  summary: "Add user authentication flow",
+  type: "feat",
+  scope: "auth"
+});
+
+// Output:
+// {
+//   title: "WTHRAPP-1234: feat(auth): Add user authentication flow",
+//   context: { ticket: "WTHRAPP-1234", type: "feat", scope: "auth" },
+//   validation: { valid: true, warnings: [] }
+// }
+```
+
+### Example: Generate PR
+
+```typescript
+const result = await generate_pr({
+  summary: "Implements OAuth authentication with token refresh"
+});
+
+// Output:
+// {
+//   title: "[WTHRAPP-1234] Add User Authentication",
+//   description: "## Summary\n\nImplements OAuth...\n\n## Changes\n\n- feat(auth): Add OAuth...",
+//   context: { ticket: "WTHRAPP-1234", commitCount: 3 }
+// }
+```
+
+## ⚙️ Configuration
+
+Create a `pr-narrator.config.json` in your project root (optional — sensible defaults are used if not present):
 
 ```json
 {
@@ -69,23 +167,25 @@ Create a `pr-narrator.config.json` in your project root (optional - sensible def
     "sections": [
       { "name": "Summary", "required": true },
       { "name": "Changes", "required": true, "autoPopulate": "commits" },
-      { "name": "Tickets", "required": false, "autoPopulate": "extracted" }
+      { "name": "Tickets", "required": false, "autoPopulate": "extracted" },
+      { "name": "Test Plan", "required": false }
     ]
   },
   "ticketPattern": "WTHRAPP-\\d+",
+  "ticketLinkFormat": "https://jira.example.com/browse/{ticket}",
   "baseBranch": "develop"
 }
 ```
 
-### Configuration Options
+### Configuration Reference
 
 #### Commit Settings
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `format` | string | `"conventional"` | Commit format: `conventional`, `simple`, `gitmoji`, `angular` |
+| `format` | string | `"conventional"` | Format: `conventional`, `simple`, `gitmoji`, `angular` |
 | `maxTitleLength` | number | `72` | Maximum title length |
-| `requireScope` | boolean | `false` | Require a scope in conventional commits |
+| `requireScope` | boolean | `false` | Require scope in conventional commits |
 | `scopes` | string[] | `[]` | Allowed scopes (empty = any) |
 | `prefix.enabled` | boolean | `true` | Enable/disable prefix |
 | `prefix.ticketFormat` | string | `"{ticket}: "` | Format when ticket found |
@@ -97,159 +197,28 @@ Create a `pr-narrator.config.json` in your project root (optional - sensible def
 |--------|------|---------|-------------|
 | `title.prefix.enabled` | boolean | `true` | Enable prefix in PR title |
 | `title.prefix.ticketFormat` | string | `"[{ticket}] "` | PR title prefix format |
-| `sections` | array | See below | PR description sections |
+| `sections` | array | See above | PR description sections |
 
 #### Global Settings
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ticketPattern` | string | - | Regex to match ticket numbers |
-| `ticketLinkFormat` | string | - | URL template for ticket links |
+| `ticketPattern` | string | — | Regex to match ticket numbers |
+| `ticketLinkFormat` | string | — | URL template for ticket links |
 | `baseBranch` | string | `"main"` | Base branch for PR comparisons |
 
-## Available Tools
+## 🏷️ Prefix Examples
 
-### Commit Tools
+| Branch | Result |
+|--------|--------|
+| `feature/WTHRAPP-1234-add-login` | `WTHRAPP-1234: ` (commit) / `[WTHRAPP-1234] ` (PR) |
+| `task/update-readme` | `Task: ` (from branch prefix) |
+| `bug/fix-crash` | `Bug: ` (from branch prefix) |
+| `main` | (no prefix) |
 
-#### `generate_commit_message`
+## 🔌 Optional Integrations
 
-Generate a commit message based on staged changes and config.
-
-```typescript
-const result = await generate_commit_message({
-  repoPath: "/path/to/repo",
-  summary: "Add user authentication flow",
-  type: "feat",
-  scope: "auth"
-});
-
-// Returns:
-// {
-//   title: "WTHRAPP-1234: feat(auth): Add user authentication flow",
-//   fullMessage: "WTHRAPP-1234: feat(auth): Add user authentication flow",
-//   context: { ticket: "WTHRAPP-1234", type: "feat", scope: "auth" },
-//   validation: { valid: true, warnings: [] }
-// }
-```
-
-#### `validate_commit_message`
-
-Validate a commit message against configured rules.
-
-```typescript
-const result = await validate_commit_message({
-  message: "added new feature"
-});
-
-// Returns:
-// {
-//   valid: false,
-//   errors: [],
-//   warnings: ["Use imperative mood: \"Add\" instead of \"added\""],
-//   parsed: { type: null, scope: null, isConventional: false }
-// }
-```
-
-### PR Tools
-
-#### `generate_pr`
-
-Generate a complete PR with title and description (main tool for PR creation).
-
-```typescript
-const result = await generate_pr({
-  repoPath: "/path/to/repo",
-  summary: "Implements new authentication flow with OAuth support"
-});
-
-// Returns:
-// {
-//   title: "[WTHRAPP-1234] Add User Authentication",
-//   description: "## Summary\n\nImplements new authentication...\n\n## Changes\n\n- feat(auth): Add OAuth...",
-//   context: { ticket: "WTHRAPP-1234", commitCount: 3, tickets: ["WTHRAPP-1234"] },
-//   suggestedActions: [{ action: "create_pr", mcpServer: "user-github", ... }]
-// }
-```
-
-#### `generate_pr_title`
-
-Generate just the PR title.
-
-```typescript
-const result = await generate_pr_title({
-  summary: "Add user authentication"
-});
-// Returns: { title: "[WTHRAPP-1234] Add user authentication", ... }
-```
-
-#### `generate_pr_description`
-
-Generate just the PR description with configured sections.
-
-```typescript
-const result = await generate_pr_description({
-  summary: "Implements OAuth authentication",
-  testPlan: "1. Login with Google\n2. Verify token refresh"
-});
-```
-
-### Utility Tools
-
-#### `get_config`
-
-Get the current pr-narrator configuration for the repository.
-
-```typescript
-const config = await get_config({ repoPath: "/path/to/repo" });
-```
-
-#### `analyze_git_changes`
-
-Analyze the current git repository state and changes.
-
-```typescript
-const analysis = await analyze_git_changes({ 
-  repoPath: "/path/to/repo",
-  includeFullDiff: false 
-});
-
-// Returns:
-// - Current branch, base branch
-// - Ticket extracted from branch name
-// - Branch prefix (task/, bug/, etc.)
-// - Staged changes with suggested type/scope
-// - Branch changes since base branch
-```
-
-#### `extract_tickets`
-
-Extract ticket numbers from branch name and commits.
-
-```typescript
-const result = await extract_tickets({
-  includeCommits: true
-});
-
-// Returns:
-// {
-//   tickets: [{ ticket: "WTHRAPP-1234", source: "branch" }],
-//   markdownList: "- [WTHRAPP-1234](https://jira.example.com/browse/WTHRAPP-1234)"
-// }
-```
-
-## Prefix Examples
-
-| Branch | Config | Result |
-|--------|--------|--------|
-| `feature/WTHRAPP-1234-add-login` | ticket + branchFallback | `WTHRAPP-1234: ` |
-| `task/update-readme` | ticket + branchFallback | `Task: ` |
-| `bug/fix-crash` | ticket + branchFallback | `Bug: ` |
-| `main` | ticket + branchFallback | (no prefix) |
-| Any | prefix disabled | (no prefix) |
-
-## Optional Integrations
-
-pr-narrator-mcp can work with other MCPs you have configured:
+pr-narrator-mcp can orchestrate with other MCPs you have configured:
 
 ```json
 {
@@ -266,24 +235,49 @@ pr-narrator-mcp can work with other MCPs you have configured:
 }
 ```
 
-When configured, the tools will return `suggestedActions` that the AI can execute using your other MCPs.
+When configured, tools return `suggestedActions` that the AI can execute using your other MCPs to:
+- Create PRs directly via GitHub MCP
+- Fetch ticket details from Jira MCP
+- Auto-populate PR descriptions with ticket context
 
-## Development
+## 🧪 Development
 
 ```bash
+# Clone the repository
+git clone https://github.com/mhaviv/pr-narrator-mcp.git
+cd pr-narrator-mcp
+
 # Install dependencies
 npm install
 
 # Build
 npm run build
 
-# Watch mode
-npm run dev
-
 # Run tests
 npm test
+
+# Watch mode
+npm run dev
 ```
 
-## License
+## 🤝 Contributing
 
-MIT
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes using pr-narrator-mcp 😉
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+**[Report Bug](https://github.com/mhaviv/pr-narrator-mcp/issues)** · **[Request Feature](https://github.com/mhaviv/pr-narrator-mcp/issues)**
+
+</div>
