@@ -1,0 +1,48 @@
+{
+  "name": "pr-narrator-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for generating consistent commit messages and PR content based on your custom criteria",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "pr-narrator-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "git",
+    "commit",
+    "pull-request",
+    "pr",
+    "automation"
+  ],
+  "author": "mhaviv",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mhaviv/pr-narrator-mcp.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "simple-git": "^3.22.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  }
+}
