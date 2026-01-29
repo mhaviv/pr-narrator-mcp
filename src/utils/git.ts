@@ -1,4 +1,11 @@
 import simpleGit, { SimpleGit, DiffResult } from "simple-git";
+import { resolve, normalize } from "path";
+
+/**
+ * Maximum diff size in bytes to prevent memory issues with large diffs
+ * Set to 500KB - diffs larger than this will be truncated
+ */
+export const MAX_DIFF_SIZE = 500_000;
 
 export interface GitInfo {
   isRepo: boolean;
@@ -14,6 +21,7 @@ export interface StagedChanges {
   totalAdditions: number;
   totalDeletions: number;
   diff: string;
+  diffTruncated?: boolean;
 }
 
 export interface FileChange {
@@ -29,6 +37,7 @@ export interface BranchChanges {
   totalAdditions: number;
   totalDeletions: number;
   diff: string;
+  diffTruncated?: boolean;
 }
 
 export interface CommitInfo {
@@ -36,6 +45,41 @@ export interface CommitInfo {
   message: string;
   author: string;
   date: string;
+}
+
+/**
+ * Validate and normalize the repository path
+ * Prevents path traversal and ensures consistent path handling
+ */
+export function validateRepoPath(inputPath: string | undefined): string {
+  const repoPath = inputPath || process.cwd();
+  const normalized = normalize(resolve(repoPath));
+
+  // Check for suspicious path patterns (basic path traversal prevention)
+  if (normalized.includes("\0")) {
+    throw new Error("Invalid path: contains null bytes");
+  }
+
+  return normalized;
+}
+
+/**
+ * Truncate diff if it exceeds MAX_DIFF_SIZE to prevent memory issues
+ * Returns the truncated diff and a flag indicating if truncation occurred
+ */
+export function truncateDiff(diff: string): { diff: string; truncated: boolean } {
+  if (diff.length <= MAX_DIFF_SIZE) {
+    return { diff, truncated: false };
+  }
+
+  const truncatedDiff = diff.slice(0, MAX_DIFF_SIZE);
+  const lastNewline = truncatedDiff.lastIndexOf("\n");
+  const cleanTruncation = lastNewline > 0 ? truncatedDiff.slice(0, lastNewline) : truncatedDiff;
+
+  return {
+    diff: cleanTruncation + `\n\n[Diff truncated: exceeded ${MAX_DIFF_SIZE} bytes. Use git diff directly for full content.]`,
+    truncated: true,
+  };
 }
 
 /**
@@ -50,7 +94,8 @@ export function createGit(repoPath: string): SimpleGit {
  */
 export async function isGitRepo(repoPath: string): Promise<boolean> {
   try {
-    const git = createGit(repoPath);
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
     await git.revparse(["--git-dir"]);
     return true;
   } catch {
@@ -65,10 +110,11 @@ export async function getGitInfo(
   repoPath: string,
   baseBranch: string = "main"
 ): Promise<GitInfo> {
-  const git = createGit(repoPath);
+  const validatedPath = validateRepoPath(repoPath);
+  const git = createGit(validatedPath);
 
   try {
-    const isRepo = await isGitRepo(repoPath);
+    const isRepo = await isGitRepo(validatedPath);
     if (!isRepo) {
       return {
         isRepo: false,
@@ -115,7 +161,8 @@ export async function getGitInfo(
  */
 export async function getCurrentBranch(repoPath: string): Promise<string | null> {
   try {
-    const git = createGit(repoPath);
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
     const result = await git.branch();
     return result.current || null;
   } catch {
@@ -130,7 +177,8 @@ export async function getStagedChanges(
   repoPath: string
 ): Promise<StagedChanges | null> {
   try {
-    const git = createGit(repoPath);
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
     const status = await git.status();
 
     if (status.staged.length === 0) {
@@ -138,8 +186,11 @@ export async function getStagedChanges(
     }
 
     // Get diff of staged changes
-    const diff = await git.diff(["--cached"]);
+    const rawDiff = await git.diff(["--cached"]);
     const diffStat = await git.diff(["--cached", "--numstat"]);
+
+    // Truncate large diffs to prevent memory issues
+    const { diff, truncated } = truncateDiff(rawDiff);
 
     const files = parseNumstat(diffStat, status.staged);
     const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
@@ -150,6 +201,7 @@ export async function getStagedChanges(
       totalAdditions,
       totalDeletions,
       diff,
+      diffTruncated: truncated,
     };
   } catch (error) {
     return null;
@@ -164,7 +216,8 @@ export async function getBranchChanges(
   baseBranch: string = "main"
 ): Promise<BranchChanges | null> {
   try {
-    const git = createGit(repoPath);
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
 
     // Get commits since base branch
     const logResult = await git.log([`${baseBranch}..HEAD`]);
@@ -176,8 +229,11 @@ export async function getBranchChanges(
     }));
 
     // Get diff since base branch
-    const diff = await git.diff([`${baseBranch}...HEAD`]);
+    const rawDiff = await git.diff([`${baseBranch}...HEAD`]);
     const diffStat = await git.diff([`${baseBranch}...HEAD`, "--numstat"]);
+
+    // Truncate large diffs to prevent memory issues
+    const { diff, truncated } = truncateDiff(rawDiff);
 
     const files = parseNumstat(diffStat);
     const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
@@ -189,6 +245,7 @@ export async function getBranchChanges(
       totalAdditions,
       totalDeletions,
       diff,
+      diffTruncated: truncated,
     };
   } catch (error) {
     return null;
@@ -281,7 +338,8 @@ export async function extractTicketsFromCommits(
   }
 
   try {
-    const git = createGit(repoPath);
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
     const logResult = await git.log([`${baseBranch}..HEAD`]);
 
     const regex = new RegExp(ticketPattern, "gi");

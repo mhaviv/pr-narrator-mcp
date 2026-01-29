@@ -6,6 +6,11 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { createRequire } from "module";
+
+// Read version from package.json to avoid version drift
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json");
 
 // Import all tools
 import { getConfigTool, getConfig, getConfigSchema } from "./tools/get-config.js";
@@ -45,47 +50,64 @@ import {
   generatePrSchema,
 } from "./tools/generate-pr.js";
 
+// Safety annotations for all tools (Anthropic MCP requirement)
+// All tools in this server are read-only operations
+const readOnlyAnnotations = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+
 // Tool definitions for the MCP server
 const tools = [
   {
     name: getConfigTool.name,
     description: getConfigTool.description,
     inputSchema: getConfigTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: analyzeGitChangesTool.name,
     description: analyzeGitChangesTool.description,
     inputSchema: analyzeGitChangesTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: generateCommitMessageTool.name,
     description: generateCommitMessageTool.description,
     inputSchema: generateCommitMessageTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: validateCommitMessageTool.name,
     description: validateCommitMessageTool.description,
     inputSchema: validateCommitMessageTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: extractTicketsTool.name,
     description: extractTicketsTool.description,
     inputSchema: extractTicketsTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: generatePrTitleTool.name,
     description: generatePrTitleTool.description,
     inputSchema: generatePrTitleTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: generatePrDescriptionTool.name,
     description: generatePrDescriptionTool.description,
     inputSchema: generatePrDescriptionTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
   {
     name: generatePrTool.name,
     description: generatePrTool.description,
     inputSchema: generatePrTool.inputSchema,
+    annotations: readOnlyAnnotations,
   },
 ];
 
@@ -93,7 +115,7 @@ const tools = [
 const server = new Server(
   {
     name: "pr-narrator-mcp",
-    version: "0.1.0",
+    version, // Dynamically read from package.json
   },
   {
     capabilities: {
@@ -236,8 +258,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
+// Graceful shutdown handler
+async function shutdown(signal: string) {
+  console.error(`\nReceived ${signal}, shutting down PR Narrator MCP server...`);
+  try {
+    await server.close();
+    console.error("Server closed successfully");
+    process.exit(0);
+  } catch (error) {
+    console.error("Error during shutdown:", error);
+    process.exit(1);
+  }
+}
+
 // Start the server
 async function main() {
+  // Register signal handlers for graceful shutdown
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  // Handle uncaught exceptions
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception:", error.message);
+    process.exit(1);
+  });
+
+  // Handle unhandled promise rejections
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled rejection:", reason);
+    process.exit(1);
+  });
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("PR Narrator MCP server running on stdio");

@@ -240,6 +240,91 @@ When configured, tools return `suggestedActions` that the AI can execute using y
 - Fetch ticket details from Jira MCP
 - Auto-populate PR descriptions with ticket context
 
+## 🔧 Troubleshooting
+
+### Server not starting
+
+**Problem**: The MCP server doesn't appear in your IDE's tool list.
+
+**Solutions**:
+1. Ensure Node.js 18+ is installed: `node --version`
+2. Try running directly to see errors: `npx pr-narrator-mcp`
+3. Check your MCP configuration file path is correct
+4. Restart your IDE after configuration changes
+
+### "Not a git repository" error
+
+**Problem**: Tools return "Not a git repository" error.
+
+**Solutions**:
+1. Ensure you're in a git repository: `git status`
+2. Check the `repoPath` parameter points to a valid git repo
+3. Initialize git if needed: `git init`
+
+### No staged changes found
+
+**Problem**: `generate_commit_message` says no staged changes.
+
+**Solutions**:
+1. Stage your changes first: `git add <files>` or `git add .`
+2. Verify staged files: `git status`
+
+### Ticket not extracted from branch
+
+**Problem**: Ticket prefix isn't being added to commits/PRs.
+
+**Solutions**:
+1. Check your `ticketPattern` regex in config matches your ticket format
+2. Ensure branch name contains the ticket: `git branch --show-current`
+3. Test your regex: `echo "feature/PROJ-123-test" | grep -oE "PROJ-\d+"`
+
+### Configuration not loading
+
+**Problem**: Custom config settings aren't being applied.
+
+**Solutions**:
+1. Verify config file name is one of: `pr-narrator.config.json`, `.pr-narrator.json`, `.prnarratorrc.json`
+2. Check JSON syntax: `cat pr-narrator.config.json | jq .`
+3. Use `get_config` tool to see what config is loaded
+4. Config is searched from repo path upward to filesystem root
+
+### Diff too large / truncated
+
+**Problem**: Large diffs are being truncated.
+
+**Explanation**: Diffs over 500KB are automatically truncated to prevent memory issues. This is by design.
+
+**Solutions**:
+1. For full diff, use `git diff` directly in terminal
+2. Break large changes into smaller commits
+3. The truncation message indicates the original size
+
+### Base branch not found
+
+**Problem**: PR generation fails with branch comparison errors.
+
+**Solutions**:
+1. Check `baseBranch` in config matches your actual base branch (e.g., `main`, `develop`, `master`)
+2. Ensure the base branch exists locally: `git branch -a`
+3. Fetch remote branches: `git fetch origin`
+
+### Common Configuration Issues
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Empty prefix | `prefix.enabled: false` or no ticket/branch prefix | Set `prefix.enabled: true` |
+| Wrong commit format | `format` not matching team standard | Use `conventional`, `simple`, `gitmoji`, or `angular` |
+| Scope validation failing | Scope not in `scopes` array | Add scope to allowed list or remove `scopes` restriction |
+| PR sections missing | Custom `sections` array overrides defaults | Include all desired sections in config |
+
+### Getting Help
+
+If you're still having issues:
+1. Run `get_config` tool to verify your configuration
+2. Run `analyze_git_changes` to see what the server detects
+3. Check the [GitHub Issues](https://github.com/mhaviv/pr-narrator-mcp/issues) for similar problems
+4. Open a new issue with your config and error messages
+
 ## 🧪 Development
 
 ```bash
