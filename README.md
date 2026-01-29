@@ -109,16 +109,101 @@ Create a `pr-narrator.config.json` in your project root (optional - sensible def
 
 ## Available Tools
 
-### `get_config`
+### Commit Tools
+
+#### `generate_commit_message`
+
+Generate a commit message based on staged changes and config.
+
+```typescript
+const result = await generate_commit_message({
+  repoPath: "/path/to/repo",
+  summary: "Add user authentication flow",
+  type: "feat",
+  scope: "auth"
+});
+
+// Returns:
+// {
+//   title: "WTHRAPP-1234: feat(auth): Add user authentication flow",
+//   fullMessage: "WTHRAPP-1234: feat(auth): Add user authentication flow",
+//   context: { ticket: "WTHRAPP-1234", type: "feat", scope: "auth" },
+//   validation: { valid: true, warnings: [] }
+// }
+```
+
+#### `validate_commit_message`
+
+Validate a commit message against configured rules.
+
+```typescript
+const result = await validate_commit_message({
+  message: "added new feature"
+});
+
+// Returns:
+// {
+//   valid: false,
+//   errors: [],
+//   warnings: ["Use imperative mood: \"Add\" instead of \"added\""],
+//   parsed: { type: null, scope: null, isConventional: false }
+// }
+```
+
+### PR Tools
+
+#### `generate_pr`
+
+Generate a complete PR with title and description (main tool for PR creation).
+
+```typescript
+const result = await generate_pr({
+  repoPath: "/path/to/repo",
+  summary: "Implements new authentication flow with OAuth support"
+});
+
+// Returns:
+// {
+//   title: "[WTHRAPP-1234] Add User Authentication",
+//   description: "## Summary\n\nImplements new authentication...\n\n## Changes\n\n- feat(auth): Add OAuth...",
+//   context: { ticket: "WTHRAPP-1234", commitCount: 3, tickets: ["WTHRAPP-1234"] },
+//   suggestedActions: [{ action: "create_pr", mcpServer: "user-github", ... }]
+// }
+```
+
+#### `generate_pr_title`
+
+Generate just the PR title.
+
+```typescript
+const result = await generate_pr_title({
+  summary: "Add user authentication"
+});
+// Returns: { title: "[WTHRAPP-1234] Add user authentication", ... }
+```
+
+#### `generate_pr_description`
+
+Generate just the PR description with configured sections.
+
+```typescript
+const result = await generate_pr_description({
+  summary: "Implements OAuth authentication",
+  testPlan: "1. Login with Google\n2. Verify token refresh"
+});
+```
+
+### Utility Tools
+
+#### `get_config`
 
 Get the current pr-narrator configuration for the repository.
 
 ```typescript
-// Example usage by AI
 const config = await get_config({ repoPath: "/path/to/repo" });
 ```
 
-### `analyze_git_changes`
+#### `analyze_git_changes`
 
 Analyze the current git repository state and changes.
 
@@ -136,25 +221,19 @@ const analysis = await analyze_git_changes({
 // - Branch changes since base branch
 ```
 
-### `generate_commit_message`
+#### `extract_tickets`
 
-Generate a commit message based on staged changes and config.
+Extract ticket numbers from branch name and commits.
 
 ```typescript
-const result = await generate_commit_message({
-  repoPath: "/path/to/repo",
-  summary: "Add user authentication flow",
-  type: "feat",
-  scope: "auth"
+const result = await extract_tickets({
+  includeCommits: true
 });
 
 // Returns:
 // {
-//   title: "WTHRAPP-1234: feat(auth): Add user authentication flow",
-//   body: null,
-//   fullMessage: "WTHRAPP-1234: feat(auth): Add user authentication flow",
-//   context: { ticket: "WTHRAPP-1234", type: "feat", scope: "auth" },
-//   validation: { valid: true, warnings: [] }
+//   tickets: [{ ticket: "WTHRAPP-1234", source: "branch" }],
+//   markdownList: "- [WTHRAPP-1234](https://jira.example.com/browse/WTHRAPP-1234)"
 // }
 ```
 

@@ -7,6 +7,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
+// Import all tools
 import { getConfigTool, getConfig, getConfigSchema } from "./tools/get-config.js";
 import {
   analyzeGitChangesTool,
@@ -18,6 +19,31 @@ import {
   generateCommitMessage,
   generateCommitMessageSchema,
 } from "./tools/generate-commit-message.js";
+import {
+  validateCommitMessageTool,
+  validateCommitMessage,
+  validateCommitMessageSchema,
+} from "./tools/validate-commit-message.js";
+import {
+  extractTicketsTool,
+  extractTickets,
+  extractTicketsSchema,
+} from "./tools/extract-tickets.js";
+import {
+  generatePrTitleTool,
+  generatePrTitle,
+  generatePrTitleSchema,
+} from "./tools/generate-pr-title.js";
+import {
+  generatePrDescriptionTool,
+  generatePrDescription,
+  generatePrDescriptionSchema,
+} from "./tools/generate-pr-description.js";
+import {
+  generatePrTool,
+  generatePr,
+  generatePrSchema,
+} from "./tools/generate-pr.js";
 
 // Tool definitions for the MCP server
 const tools = [
@@ -35,6 +61,31 @@ const tools = [
     name: generateCommitMessageTool.name,
     description: generateCommitMessageTool.description,
     inputSchema: generateCommitMessageTool.inputSchema,
+  },
+  {
+    name: validateCommitMessageTool.name,
+    description: validateCommitMessageTool.description,
+    inputSchema: validateCommitMessageTool.inputSchema,
+  },
+  {
+    name: extractTicketsTool.name,
+    description: extractTicketsTool.description,
+    inputSchema: extractTicketsTool.inputSchema,
+  },
+  {
+    name: generatePrTitleTool.name,
+    description: generatePrTitleTool.description,
+    inputSchema: generatePrTitleTool.inputSchema,
+  },
+  {
+    name: generatePrDescriptionTool.name,
+    description: generatePrDescriptionTool.description,
+    inputSchema: generatePrDescriptionTool.inputSchema,
+  },
+  {
+    name: generatePrTool.name,
+    description: generatePrTool.description,
+    inputSchema: generatePrTool.inputSchema,
   },
 ];
 
@@ -93,6 +144,71 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "generate_commit_message": {
         const input = generateCommitMessageSchema.parse(args || {});
         const result = await generateCommitMessage(input);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "validate_commit_message": {
+        const input = validateCommitMessageSchema.parse(args || {});
+        const result = await validateCommitMessage(input);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "extract_tickets": {
+        const input = extractTicketsSchema.parse(args || {});
+        const result = await extractTickets(input);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "generate_pr_title": {
+        const input = generatePrTitleSchema.parse(args || {});
+        const result = await generatePrTitle(input);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "generate_pr_description": {
+        const input = generatePrDescriptionSchema.parse(args || {});
+        const result = await generatePrDescription(input);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "generate_pr": {
+        const input = generatePrSchema.parse(args || {});
+        const result = await generatePr(input);
         return {
           content: [
             {
