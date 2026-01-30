@@ -290,20 +290,20 @@ export async function generatePr(
     };
   }
 
-  const purposeGuidelines = `You MUST rewrite the Purpose section as complete prose that covers all key changes.
+  const purposeGuidelines = `You MUST rewrite the Purpose section. The 'description' field has a placeholder.
 
-The 'description' field has a placeholder Purpose (just the commit title). You must REPLACE it 
-with a full prose description synthesized from commitBullets. Never show bullets to the user.
+FORMAT RULES:
+- 1-2 changes: Write as prose sentence(s)
+- 3+ changes: Write intro sentence, then bullet points for each change
 
 HOW TO WRITE:
 1. Read ALL commitBullets to understand the full scope
-2. Group related changes conceptually (e.g., "extracts author" + "maps to Slack ID" = "GitHub-to-Slack user mapping")
-3. Write 2-4 sentences that tell the complete story of what this PR does
-4. Use present tense: "Enables...", "Adds...", "Extracts...", "Maps..."
-5. Include key technical details but as prose, not implementation steps
-6. If tests included, mention what's tested
+2. Write an intro sentence describing the main feature/goal
+3. If 3+ distinct changes, add bullets (reworded to be concise and high-level)
+4. Use present tense: "Enables...", "Adds...", "Extracts..."
+5. If tests included, add as final bullet: "Includes unit tests for X"
 
-EXAMPLE - Given these bullets:
+EXAMPLE (3+ changes) - Given these bullets:
 - Extract PR author from GitHub PR metadata
 - Encode author in tag suffix for Azure pipelines  
 - Add threaded failure notification in slack_aggregator.py
@@ -312,11 +312,20 @@ EXAMPLE - Given these bullets:
 - Add unit tests for notification functionality
 
 WRITE THIS Purpose:
-"Enables automatic Slack notifications to PR authors when builds fail. Extracts the PR author from GitHub metadata and maps GitHub usernames to Slack user IDs for proper @mentions in threaded replies. Includes duplicate notification prevention and unit tests for the notification functionality."
+"Enables automatic Slack notifications to PR authors when builds fail.
+
+- Extracts PR author from GitHub PR metadata
+- Maps GitHub usernames to Slack user IDs for @mentions
+- Posts threaded failure notifications
+- Prevents duplicate notification pings
+- Includes unit tests for notification functionality"
+
+EXAMPLE (1-2 changes):
+"Updates CI pipeline to Xcode 16.1."
 
 NOT THIS:
 - Just "Ping PR author when builds fail" (too short, missing detail)
-- Showing bullets separately as "implementation details" (wrong format)
+- Raw commit bullets without intro sentence
 - "The MCP provided these points..." (never reference the MCP)`;
 
   return {
@@ -343,21 +352,22 @@ export const generatePrTool = {
   name: "generate_pr",
   description: `Generate a PR title and description.
 
-IMPORTANT: The returned 'description' has a PLACEHOLDER Purpose (just the commit title).
-You MUST rewrite it as complete prose BEFORE showing to the user.
+IMPORTANT: The returned 'description' has a PLACEHOLDER Purpose. You MUST rewrite it using
+purposeContext.commitBullets and purposeGuidelines BEFORE showing to the user.
 
-Use 'purposeContext.commitBullets' and 'purposeGuidelines' to write a FULL Purpose section
-that covers all the key changes in 2-4 sentences of prose. Then show ONLY the final
-title + rewritten description. Never show bullets, never mention "MCP provided", never
-show purposeContext to the user.
+FORMAT:
+- 1-2 changes: prose sentence(s)
+- 3+ changes: intro sentence + bullet points
 
-Example - if bullets mention "extract author", "map to Slack ID", "threaded notification", "prevent duplicates":
-Write: "Enables automatic Slack notifications to PR authors when builds fail. Extracts the 
-PR author from GitHub metadata and maps to Slack user IDs for @mentions. Includes duplicate 
-notification prevention."
+Example (3+ changes):
+"Enables automatic Slack notifications to PR authors when builds fail.
 
-WRONG: Showing short Purpose + bullets separately
-RIGHT: One complete prose Purpose block with all key details synthesized`,
+- Extracts PR author from GitHub PR metadata
+- Maps GitHub usernames to Slack user IDs for @mentions
+- Posts threaded failure notifications
+- Includes unit tests for notification functionality"
+
+Show ONLY the final title + rewritten description. Never mention "MCP provided" or show raw purposeContext.`,
   inputSchema: {
     type: "object" as const,
     properties: {
