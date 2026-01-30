@@ -6,6 +6,7 @@ vi.mock("../../src/utils/git.js", () => ({
   getCurrentBranch: vi.fn(),
   extractTicketFromBranch: vi.fn(),
   extractTicketsFromCommits: vi.fn(),
+  getDefaultBranch: vi.fn().mockResolvedValue("main"),
 }));
 
 // Mock the config loader

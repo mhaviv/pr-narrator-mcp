@@ -6,6 +6,7 @@ import {
   extractTicketFromBranch,
   extractBranchPrefix,
   extractTicketsFromCommits,
+  getDefaultBranch,
 } from "../utils/git.js";
 import { formatPrefix, truncate, formatTicketLink } from "../utils/formatters.js";
 import type { PrSection } from "../config/schema.js";
@@ -116,7 +117,9 @@ export async function generatePr(
   const { config } = await loadConfig(repoPath);
   const prConfig = config.pr;
   const prTitleConfig = prConfig.title;
-  const baseBranch = config.baseBranch;
+  
+  // Auto-detect base branch from repo, fall back to config value
+  const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 
   // Get branch info
   const branchName = await getCurrentBranch(repoPath);

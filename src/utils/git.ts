@@ -171,6 +171,52 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
 }
 
 /**
+ * Auto-detect the default/base branch for the repository
+ * Checks in order:
+ * 1. Remote HEAD reference (origin's default branch)
+ * 2. Common branch names that exist locally (main, master, develop, development)
+ * 3. Falls back to provided default
+ */
+export async function getDefaultBranch(
+  repoPath: string,
+  fallback: string = "main"
+): Promise<string> {
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
+
+    // Try to get the default branch from origin's HEAD reference
+    try {
+      const remoteHead = await git.raw(["symbolic-ref", "refs/remotes/origin/HEAD"]);
+      if (remoteHead) {
+        // Returns something like "refs/remotes/origin/main"
+        const match = remoteHead.trim().match(/refs\/remotes\/origin\/(.+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+    } catch {
+      // Remote HEAD not set, try other methods
+    }
+
+    // Check which common branches exist locally
+    const branches = await git.branchLocal();
+    const commonBranches = ["main", "master", "develop", "development"];
+    
+    for (const branch of commonBranches) {
+      if (branches.all.includes(branch)) {
+        return branch;
+      }
+    }
+
+    // Fall back to provided default
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Get staged changes (for commit message generation)
  */
 export async function getStagedChanges(

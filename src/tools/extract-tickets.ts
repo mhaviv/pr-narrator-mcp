@@ -4,6 +4,7 @@ import {
   getCurrentBranch,
   extractTicketFromBranch,
   extractTicketsFromCommits,
+  getDefaultBranch,
 } from "../utils/git.js";
 import { formatTicketLink } from "../utils/formatters.js";
 
@@ -54,7 +55,9 @@ export async function extractTickets(
   const { config } = await loadConfig(repoPath);
   const ticketPattern = config.ticketPattern;
   const ticketLinkFormat = config.ticketLinkFormat;
-  const baseBranch = config.baseBranch;
+  
+  // Auto-detect base branch from repo, fall back to config value
+  const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 
   const tickets: TicketInfo[] = [];
   const seen = new Set<string>();

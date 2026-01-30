@@ -7,6 +7,7 @@ import {
   extractTicketFromBranch,
   extractBranchPrefix,
   extractTicketsFromCommits,
+  getDefaultBranch,
 } from "../utils/git.js";
 import { loadConfig } from "../config/loader.js";
 import {
@@ -88,7 +89,9 @@ export async function analyzeGitChanges(
 
   // Load config to get ticket pattern and base branch
   const { config } = await loadConfig(repoPath);
-  const baseBranch = config.baseBranch;
+  
+  // Auto-detect base branch from repo, fall back to config value
+  const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 
   // Get git info
   const gitInfo = await getGitInfo(repoPath, baseBranch);
