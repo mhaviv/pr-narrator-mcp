@@ -24,7 +24,7 @@ describe("extractTickets", () => {
     vi.mocked(loadConfig).mockResolvedValue({
       config: {
         ticketPattern: "PROJ-\\d+",
-        ticketLinkFormat: "https://your-jira.atlassian.net/browse/{ticket}",
+        ticketLinkFormat: "https://your-ticketing-system.com/browse/{ticket}",
         baseBranch: "develop",
         commit: {
           format: "conventional",
@@ -62,9 +62,9 @@ describe("extractTickets", () => {
 
       const result = await extractTickets({ includeCommits: false });
 
-      expect(result.tickets[0].link).toBe("https://your-jira.atlassian.net/browse/PROJ-1234");
+      expect(result.tickets[0].link).toBe("https://your-ticketing-system.com/browse/PROJ-1234");
       expect(result.markdownList).toContain("[PROJ-1234]");
-      expect(result.markdownList).toContain("https://your-jira.atlassian.net/browse/PROJ-1234");
+      expect(result.markdownList).toContain("https://your-ticketing-system.com/browse/PROJ-1234");
     });
   });
 

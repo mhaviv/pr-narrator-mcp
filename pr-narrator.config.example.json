@@ -31,8 +31,8 @@
       { "name": "Screenshots", "required": false }
     ]
   },
-  "ticketPattern": "PROJ-\\d+",
-  "ticketLinkFormat": "https://your-jira.atlassian.net/browse/{ticket}",
+  "ticketPattern": "[A-Z]+-\\d+",
+  "ticketLinkFormat": "https://your-ticketing-system.com/browse/{ticket}",
   "baseBranch": "main",
   "integrations": {
     "vcs": {

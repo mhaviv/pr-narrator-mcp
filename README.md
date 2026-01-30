@@ -172,7 +172,7 @@ Create a `pr-narrator.config.json` in your project root (optional — sensible d
     ]
   },
   "ticketPattern": "PROJ-\\d+",
-  "ticketLinkFormat": "https://your-jira.atlassian.net/browse/{ticket}",
+  "ticketLinkFormat": "https://your-ticketing-system.com/browse/{ticket}",
   "baseBranch": "develop"
 }
 ```
