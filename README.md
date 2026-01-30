@@ -44,11 +44,19 @@ If `BASE_BRANCH` is not set, it auto-detects from the repo (main, master, develo
 ## Tools
 
 ### generate_pr
-Generate complete PR title and description.
+Generate PR title and description with context for AI enhancement.
+
+Returns:
+- `title` - Ready-to-use PR title
+- `description` - PR description with basic Purpose (commit title)
+- `purposeContext` - Commit data (title, bullets, hasTests) for AI to enhance
+- `purposeGuidelines` - Instructions on how to write Purpose in prose style
+
+**Important:** The Purpose section in `description` is just the commit title. Use `purposeContext` and `purposeGuidelines` to rewrite it in prose style before creating the PR.
 
 PR description includes:
-- **Ticket** - Link extracted from branch name
-- **Purpose** - Auto-generated summary of changes
+- **Ticket** - Link extracted from branch name (omitted if none found)
+- **Purpose** - Base summary for AI to enhance
 
 ### generate_commit_message
 Generate commit message from staged changes.

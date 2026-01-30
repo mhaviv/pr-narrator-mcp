@@ -151,6 +151,41 @@ describe("generatePr", () => {
       expect(result.context.tickets).toContain("PROJ-456");
       expect(result.context.tickets).toContain("PROJ-789");
     });
+
+    it("should include purposeContext for AI enhancement", async () => {
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [{
+          hash: "abc1234",
+          message: `Add login feature
+
+- Add login form component
+- Add validation logic
+- Add unit tests`,
+        }],
+        files: [
+          { path: "src/auth/login.ts", additions: 100, deletions: 20 },
+          { path: "src/auth/login.test.ts", additions: 50, deletions: 0 },
+        ],
+        diff: "mock diff",
+      });
+
+      const result = await generatePr({}, testConfig);
+
+      // Should include purposeContext for AI to use
+      expect(result.purposeContext).not.toBeNull();
+      expect(result.purposeContext?.commitTitle).toBe("Add login feature");
+      expect(result.purposeContext?.commitBullets).toHaveLength(3);
+      expect(result.purposeContext?.commitBullets).toContain("Add login form component");
+      expect(result.purposeContext?.hasTests).toBe(true);
+    });
+
+    it("should include purposeGuidelines for AI", async () => {
+      const result = await generatePr({}, testConfig);
+
+      expect(result.purposeGuidelines).toBeDefined();
+      expect(result.purposeGuidelines).toContain("prose style");
+      expect(result.purposeGuidelines).toContain("present tense");
+    });
   });
 
   describe("custom content", () => {
