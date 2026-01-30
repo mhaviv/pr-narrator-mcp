@@ -183,8 +183,8 @@ describe("generatePr", () => {
       const result = await generatePr({}, testConfig);
 
       expect(result.purposeGuidelines).toBeDefined();
-      expect(result.purposeGuidelines).toContain("prose style");
-      expect(result.purposeGuidelines).toContain("present tense");
+      expect(result.purposeGuidelines).toContain("prose");
+      expect(result.purposeGuidelines).toContain("Present tense");
     });
   });
 

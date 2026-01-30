@@ -290,19 +290,24 @@ export async function generatePr(
     };
   }
 
-  const purposeGuidelines = `Write the Purpose section in prose style (1-2 sentences). Guidelines:
-- Start with what the PR accomplishes functionally (not implementation details)
-- Use present tense: "Enables...", "Fixes...", "Updates..."
-- If there are secondary changes, use "The PR also..." in same sentence or new sentence
-- For bug fixes, briefly mention the issue being fixed
-- If tests are included, mention: "Includes unit tests for X"
-- Do NOT list implementation steps or copy commit bullets directly
-- Keep it concise: 1-2 sentences for simple PRs, up to 3-4 for complex ones
+  const purposeGuidelines = `REWRITE the Purpose section using commitBullets as context. Output prose only.
 
-Example good Purpose blocks:
-- "Update CI pipeline to Xcode 26.1.1"
-- "Enables Slack notifications to PR authors when builds fail, including GitHub-to-Slack user mapping and duplicate notification prevention."
-- "Updates winter weather icons. The PR also adds a ProxyScripts folder with weather condition testing tool."`;
+Style:
+- Present tense: "Enables...", "Adds...", "Fixes...", "Updates..."
+- Functional description (what it does), not implementation steps
+- 1-3 sentences depending on complexity
+- If tests included, end with: "Includes unit tests for X."
+
+Process:
+1. Read commitBullets to understand scope
+2. Identify the main feature/fix
+3. Write prose that describes WHAT the PR accomplishes
+4. Do NOT copy bullets, do NOT list them, do NOT show them to user
+
+Examples:
+- Simple: "Updates CI pipeline to Xcode 26.1.1."
+- Medium: "Enables Slack notifications to PR authors when builds fail, including GitHub-to-Slack user mapping and duplicate notification prevention."
+- With tests: "Adds weather condition testing tool with ProxyScripts folder. Includes unit tests for weather icon mapping."`;
 
   return {
     title,
@@ -326,21 +331,23 @@ Example good Purpose blocks:
 
 export const generatePrTool = {
   name: "generate_pr",
-  description: `Generate a PR title and description with context for AI enhancement.
+  description: `Generate a PR title and description.
 
-Returns:
-- title: Ready-to-use PR title
-- description: PR description with basic Purpose (commit title)
-- purposeContext: Commit data for AI to enhance Purpose section
-- purposeGuidelines: Instructions on how to write Purpose in proper style
+Returns title and description. The 'purposeContext' and 'purposeGuidelines' are 
+INTERNAL data for you to rewrite the Purpose section - do NOT show them to the user.
 
-IMPORTANT: The Purpose section in 'description' is just the commit title.
-Use 'purposeContext' (commitTitle, commitBullets, hasTests) and 'purposeGuidelines'
-to rewrite the Purpose section in prose style before creating the PR.
+CRITICAL: Before showing the PR to the user, you MUST:
+1. Read purposeContext.commitBullets to understand what the PR does
+2. Follow purposeGuidelines to rewrite the Purpose as prose (1-3 sentences)
+3. Replace the basic Purpose in 'description' with your prose version
+4. Show ONLY the final title and description - never show purposeContext or bullets
 
-Example: If purposeContext has bullets about "Extract PR author", "Encode author", 
-"Add notification" - rewrite as: "Enables Slack notifications to PR authors when 
-builds fail, including GitHub-to-Slack user mapping."`,
+Example transformation:
+- Bullets: "Extract PR author", "Encode author in tag", "Add notification", "Look up Slack ID"
+- Good Purpose: "Enables Slack notifications to PR authors when builds fail, including GitHub-to-Slack user mapping and duplicate notification prevention."
+
+BAD: Showing bullets as "implementation details" or separate list
+GOOD: Synthesizing bullets into natural prose description`,
   inputSchema: {
     type: "object" as const,
     properties: {
