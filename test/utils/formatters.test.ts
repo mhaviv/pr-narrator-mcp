@@ -305,7 +305,7 @@ describe("formatters", () => {
       expect(summary).toContain("Adds login functionality");
     });
 
-    it("should synthesize multiple commits into prose", () => {
+    it("should synthesize multiple commits into high-level themes", () => {
       const commits = [
         { hash: "abc1234", message: "Update SDK version" },
         { hash: "def5678", message: "Fix config loading" },
@@ -317,11 +317,9 @@ describe("formatters", () => {
       ];
       const summary = generatePurposeSummary(commits, files, "task/update-sdk");
       expect(summary).toContain("update sdk");
-      // Should be prose style, not bullet points
-      expect(summary).toContain("The PR also");
-      expect(summary).toContain("fixes config loading");
-      expect(summary).toContain("adds new API endpoint");
-      // Should NOT have bullet points
+      // Should synthesize into high-level themes, not copy commit messages
+      expect(summary).toContain("The PR includes");
+      // Should NOT have bullet points or direct commit copies
       expect(summary).not.toContain("- ");
     });
 
@@ -379,7 +377,7 @@ describe("formatters", () => {
       expect(summary.length).toBeLessThanOrEqual(500);
     });
 
-    it("should use prose for 1-3 commit body bullets", () => {
+    it("should synthesize commit body bullets into high-level themes", () => {
       const commits = [{
         hash: "abc1234",
         message: `Add new feature
@@ -393,13 +391,13 @@ describe("formatters", () => {
       ];
       const summary = generatePurposeSummary(commits, files, "task/add-feature");
       
-      // Should use prose style for ≤3 items
-      expect(summary).toContain("The PR also");
-      expect(summary).not.toContain("The PR also addresses the following:");
+      // Should synthesize into themes, not copy bullets
+      expect(summary).toContain("Adds new feature");
+      expect(summary).toContain("The PR includes");
       expect(summary).not.toContain("- ");
     });
 
-    it("should use bullets for 4+ commit body bullets", () => {
+    it("should synthesize many bullets into concise high-level description", () => {
       const commits = [{
         hash: "abc1234",
         message: `Ping PR author in thread when Slack build notifications fail
@@ -416,9 +414,10 @@ describe("formatters", () => {
       
       // Should include the main message
       expect(summary).toContain("Ping PR author in thread when Slack build notifications fail");
-      // 4+ items should use bullet format
-      expect(summary).toContain("The PR also addresses the following:");
-      expect(summary).toContain("- ");
+      // Should synthesize into high-level themes, NOT copy bullets
+      expect(summary).toContain("The PR includes");
+      expect(summary).not.toContain("- Extract");
+      expect(summary).not.toContain("- Encode");
     });
 
     it("should extract test context from Python test files", () => {

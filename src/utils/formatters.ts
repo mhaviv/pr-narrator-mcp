@@ -442,16 +442,16 @@ export function generatePurposeSummary(
       }
     }
     
-    // If commit has bullet points, synthesize them (prose for ≤3, bullets for 4+)
+    // If commit has bullet points, synthesize into high-level description (not copy bullets)
     if (bulletPoints.length > 0) {
       // Filter out test-related bullets if we'll mention tests separately
       const relevantBullets = bulletPoints
         .filter(b => !hasTests || !/^add (unit )?tests?/i.test(b));
       
       if (relevantBullets.length > 0) {
-        const additionalContent = synthesizeAdditionalChanges(relevantBullets);
-        if (additionalContent) {
-          summary += "\n\n" + additionalContent;
+        const synthesized = synthesizeIntoProseDescription(relevantBullets);
+        if (synthesized) {
+          summary += "\n\n" + synthesized;
         }
       }
     }
@@ -472,7 +472,7 @@ export function generatePurposeSummary(
       summary = convertToPresentTense(commitMessages[0]);
     }
     
-    // Synthesize additional commits (prose for ≤3, bullets for 4+)
+    // Synthesize additional commits into high-level description
     const additionalChanges = commitMessages.slice(1)
       .filter(m => {
         const lower = m.toLowerCase();
@@ -482,9 +482,9 @@ export function generatePurposeSummary(
       });
     
     if (additionalChanges.length > 0) {
-      const additionalContent = synthesizeAdditionalChanges(additionalChanges);
-      if (additionalContent) {
-        summary += "\n\n" + additionalContent;
+      const synthesized = synthesizeIntoProseDescription(additionalChanges);
+      if (synthesized) {
+        summary += "\n\n" + synthesized;
       }
     }
   }
@@ -511,20 +511,10 @@ export function generatePurposeSummary(
 
   // Add test mention if tests were added/modified and not already mentioned
   if (hasTests && !summary.toLowerCase().includes("test")) {
-    // Try to extract what the tests are for
     const testContext = extractTestContext(testFiles, moduleContext);
     
     if (summary.length < 400) {
-      if (summary.includes("\nThe PR also addresses the following:")) {
-        // Already has bullet section
-        summary += `\n- Includes ${testContext}`;
-      } else if (summary.includes("\n")) {
-        // Has newlines but no bullet section
-        summary += `\n\nThe PR also includes ${testContext}.`;
-      } else {
-        // Single paragraph
-        summary += `\n\nThe PR also includes ${testContext}.`;
-      }
+      summary += `\n\nThe PR also includes ${testContext}.`;
     }
   }
 
@@ -622,64 +612,60 @@ function extractTestContext(testFiles: Array<{ path: string }>, moduleContext: s
 }
 
 /**
- * Clean up implementation details to make bullets more high-level
- * Removes: file names, parenthetical details, code references
+ * Extract key themes/concepts from bullet points to synthesize into high-level description
+ * NOT copying bullets - extracting concepts to describe what the PR does
  */
-function makeHighLevel(text: string): string {
-  return text
-    // Remove "in filename.py" or "in some_module"
-    .replace(/\s+in\s+[\w._-]+\.(py|ts|js|yml|yaml|swift|kt|java|go|rs|rb|sh)$/i, "")
-    .replace(/\s+in\s+[a-z_]+[A-Z]\w*$/g, "") // camelCase module names
-    .replace(/\s+in\s+[a-z_]+$/g, "") // snake_case module names
-    // Remove parenthetical details like "(supports X)" or "(-by-{username})"
-    .replace(/\s*\([^)]+\)\s*/g, " ")
-    // Remove code-like references with braces
-    .replace(/\{[^}]+\}/g, "")
-    // Remove env var patterns like SLACK_USER_username
-    .replace(/[A-Z_]{2,}_\w+/g, "environment variables")
-    // Clean up multiple spaces
-    .replace(/\s+/g, " ")
-    .trim();
+function extractKeyThemes(items: string[]): string[] {
+  const themes: Set<string> = new Set();
+  
+  for (const item of items) {
+    const lower = item.toLowerCase();
+    
+    // Extract key action concepts
+    if (/extract|parse|read|get|fetch|retrieve/i.test(item)) themes.add("data extraction");
+    if (/pass|send|forward|propagate/i.test(item)) themes.add("data flow");
+    if (/notify|notification|alert|message|slack|email/i.test(item)) themes.add("notifications");
+    if (/track|log|record|store|save|persist/i.test(item)) themes.add("state tracking");
+    if (/map|lookup|convert|transform/i.test(item)) themes.add("data mapping");
+    if (/prevent|avoid|dedupe|duplicate/i.test(item)) themes.add("duplicate prevention");
+    if (/config|setting|environment|env/i.test(item)) themes.add("configuration");
+    if (/auth|token|credential|permission/i.test(item)) themes.add("authentication");
+    if (/api|endpoint|request|response/i.test(item)) themes.add("API integration");
+    if (/ui|view|screen|display|render/i.test(item)) themes.add("UI changes");
+    if (/refactor|clean|reorganize|restructure/i.test(item)) themes.add("code improvements");
+    if (/fix|bug|issue|error|crash/i.test(item)) themes.add("bug fixes");
+    if (/add|implement|create|new/i.test(item) && !themes.has("notifications")) themes.add("new functionality");
+    if (/update|upgrade|bump|migrate/i.test(item)) themes.add("updates");
+    if (/remove|delete|deprecate/i.test(item)) themes.add("cleanup");
+  }
+  
+  return Array.from(themes).slice(0, 3); // Max 3 themes
 }
 
 /**
- * Synthesize additional changes into output
- * 
- * Based on PR analysis:
- * - 1-3 items: prose style ("The PR also X and Y")
- * - 4+ items: bullet points ("The PR also addresses the following:")
+ * Synthesize bullet points into a high-level prose description
+ * Does NOT copy bullets - describes what the PR accomplishes overall
  */
-function synthesizeAdditionalChanges(items: string[]): string {
+function synthesizeIntoProseDescription(items: string[]): string {
   if (items.length === 0) return "";
   
-  // Clean up implementation details and convert to present tense
-  const converted = items
-    .map(b => makeHighLevel(convertToPresentTense(b)))
-    .filter(b => b.length > 10); // Filter out items that got too short after cleanup
+  const themes = extractKeyThemes(items);
   
-  if (converted.length === 0) return "";
-  
-  // 4+ items: use bullets (avoids comma-heavy run-on sentences)
-  if (converted.length >= 4) {
-    return "The PR also addresses the following:\n" + converted.map(c => `- ${c}`).join("\n");
+  if (themes.length === 0) {
+    // Fallback: just note there are supporting changes
+    return "The PR includes supporting implementation changes.";
   }
   
-  // 1-3 items: use prose
-  const proseItems = converted.map((item, i) => {
-    if (i === 0) return item;
-    return item.charAt(0).toLowerCase() + item.slice(1);
-  });
-  
-  if (proseItems.length === 1) {
-    return `The PR also ${proseItems[0].charAt(0).toLowerCase() + proseItems[0].slice(1)}.`;
+  if (themes.length === 1) {
+    return `The PR includes ${themes[0]}.`;
   }
   
-  if (proseItems.length === 2) {
-    return `The PR also ${proseItems[0].charAt(0).toLowerCase() + proseItems[0].slice(1)} and ${proseItems[1]}.`;
+  if (themes.length === 2) {
+    return `The PR includes ${themes[0]} and ${themes[1]}.`;
   }
   
-  // 3 items: "X, Y, and Z"
-  return `The PR also ${proseItems[0].charAt(0).toLowerCase() + proseItems[0].slice(1)}, ${proseItems[1]}, and ${proseItems[2]}.`;
+  // 3 themes
+  return `The PR includes ${themes[0]}, ${themes[1]}, and ${themes[2]}.`;
 }
 
 /**
