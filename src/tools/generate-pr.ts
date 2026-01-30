@@ -53,6 +53,19 @@ export interface GeneratePrResult {
     tickets: string[];
     filesChanged: number;
   };
+  /** Context for AI to enhance the Purpose section */
+  purposeContext: {
+    /** Main commit title - use as the primary summary */
+    commitTitle: string;
+    /** Bullet points from commit body - use to understand scope, don't copy directly */
+    commitBullets: string[];
+    /** Whether tests were included */
+    hasTests: boolean;
+    /** Files changed count */
+    filesChanged: number;
+  } | null;
+  /** Guidelines for AI on how to write the Purpose section */
+  purposeGuidelines: string;
   warnings: string[];
 }
 
@@ -249,6 +262,48 @@ export async function generatePr(
 
   const description = descriptionParts.join("\n\n");
 
+  // Extract purpose context for AI to enhance
+  let purposeContext: GeneratePrResult["purposeContext"] = null;
+  if (commits.length > 0) {
+    const firstCommit = commits[0];
+    const lines = firstCommit.message.split("\n");
+    const commitTitle = lines[0]
+      .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
+      .replace(/^[A-Z]+-\d+:\s*/i, "")
+      .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
+      .trim();
+    
+    const body = lines.slice(1).join("\n").trim();
+    const commitBullets = body
+      .split("\n")
+      .filter(line => /^[-*]\s+/.test(line.trim()))
+      .map(line => line.trim().replace(/^[-*]\s+/, "").trim())
+      .filter(line => line.length > 0);
+    
+    const hasTests = files.some(f => /test|spec|__tests__/i.test(f.path));
+    
+    purposeContext = {
+      commitTitle,
+      commitBullets,
+      hasTests,
+      filesChanged,
+    };
+  }
+
+  const purposeGuidelines = `Write the Purpose section in prose style (1-2 sentences). Guidelines:
+- Start with what the PR accomplishes functionally (not implementation details)
+- Use present tense: "Enables...", "Fixes...", "Updates..."
+- If there are secondary changes, use "The PR also..." in same sentence or new sentence
+- For bug fixes, briefly mention the issue being fixed
+- If tests are included, mention: "Includes unit tests for X"
+- Do NOT list implementation steps or copy commit bullets directly
+- Keep it concise: 1-2 sentences for simple PRs, up to 3-4 for complex ones
+
+Example good Purpose blocks:
+- "Update CI pipeline to Xcode 26.1.1"
+- "Enables Slack notifications to PR authors when builds fail, including GitHub-to-Slack user mapping and duplicate notification prevention."
+- "Updates winter weather icons. The PR also adds a ProxyScripts folder with weather condition testing tool."`;
+
   return {
     title,
     description,
@@ -263,26 +318,29 @@ export async function generatePr(
       tickets,
       filesChanged,
     },
+    purposeContext,
+    purposeGuidelines,
     warnings,
   };
 }
 
 export const generatePrTool = {
   name: "generate_pr",
-  description: `Generate a complete PR with title and description.
+  description: `Generate a PR title and description with context for AI enhancement.
 
-Base Branch:
-- Auto-detects from repo (checks for main, master, develop)
-- Set BASE_BRANCH env var to specify
+Returns:
+- title: Ready-to-use PR title
+- description: PR description with basic Purpose (commit title)
+- purposeContext: Commit data for AI to enhance Purpose section
+- purposeGuidelines: Instructions on how to write Purpose in proper style
 
-Title:
-- Extracts ticket from branch name
-- Falls back to branch prefix (task/, bug/, feature/)
+IMPORTANT: The Purpose section in 'description' is just the commit title.
+Use 'purposeContext' (commitTitle, commitBullets, hasTests) and 'purposeGuidelines'
+to rewrite the Purpose section in prose style before creating the PR.
 
-Description:
-- Auto-populates Purpose from commits and file changes
-- Auto-populates Changes from commits
-- Auto-populates Tickets from branch/commits`,
+Example: If purposeContext has bullets about "Extract PR author", "Encode author", 
+"Add notification" - rewrite as: "Enables Slack notifications to PR authors when 
+builds fail, including GitHub-to-Slack user mapping."`,
   inputSchema: {
     type: "object" as const,
     properties: {

@@ -305,7 +305,7 @@ describe("formatters", () => {
       expect(summary).toContain("Adds login functionality");
     });
 
-    it("should synthesize multiple commits into high-level themes", () => {
+    it("should use first commit title for multiple commits", () => {
       const commits = [
         { hash: "abc1234", message: "Update SDK version" },
         { hash: "def5678", message: "Fix config loading" },
@@ -316,11 +316,8 @@ describe("formatters", () => {
         { path: "src/utils.ts", additions: 20, deletions: 5 },
       ];
       const summary = generatePurposeSummary(commits, files, "task/update-sdk");
-      expect(summary).toContain("update sdk");
-      // Should synthesize into high-level themes, not copy commit messages
-      expect(summary).toContain("The PR includes");
-      // Should NOT have bullet points or direct commit copies
-      expect(summary).not.toContain("- ");
+      // Now just returns commit title - AI enhances using purposeContext
+      expect(summary).toContain("Updates SDK version");
     });
 
     it("should handle empty commits and files", () => {
@@ -328,15 +325,15 @@ describe("formatters", () => {
       expect(summary).toBe("_No changes detected_");
     });
 
-    it("should add test mention when tests are included", () => {
+    it("should return commit title (AI handles test mentions via purposeContext)", () => {
       const commits = [{ hash: "abc1234", message: "Add feature" }];
       const files = [
         { path: "src/auth/feature.ts", additions: 50, deletions: 0 },
         { path: "src/auth/__tests__/feature.test.ts", additions: 100, deletions: 0 },
       ];
       const summary = generatePurposeSummary(commits, files, "task/add-feature");
-      // Should include specific test context
-      expect(summary).toContain("unit tests for feature");
+      // Just returns commit title - AI uses purposeContext.hasTests to add test mentions
+      expect(summary).toContain("Adds feature");
     });
 
     it("should handle CI-only changes", () => {
@@ -377,7 +374,7 @@ describe("formatters", () => {
       expect(summary.length).toBeLessThanOrEqual(500);
     });
 
-    it("should synthesize commit body bullets into high-level themes", () => {
+    it("should return commit title (AI uses purposeContext.commitBullets to enhance)", () => {
       const commits = [{
         hash: "abc1234",
         message: `Add new feature
@@ -391,13 +388,13 @@ describe("formatters", () => {
       ];
       const summary = generatePurposeSummary(commits, files, "task/add-feature");
       
-      // Should synthesize into themes, not copy bullets
+      // Just returns commit title - AI uses purposeContext.commitBullets to enhance
       expect(summary).toContain("Adds new feature");
-      expect(summary).toContain("The PR includes");
+      // No bullets in output - that's for AI to handle
       expect(summary).not.toContain("- ");
     });
 
-    it("should synthesize many bullets into concise high-level description", () => {
+    it("should return commit title for complex commits (AI enhances via purposeContext)", () => {
       const commits = [{
         hash: "abc1234",
         message: `Ping PR author in thread when Slack build notifications fail
@@ -412,23 +409,22 @@ describe("formatters", () => {
       ];
       const summary = generatePurposeSummary(commits, files, "task/slack-build-notification-ping-pr-author-on-failure");
       
-      // Should include the main message
+      // Should include the main commit title
       expect(summary).toContain("Ping PR author in thread when Slack build notifications fail");
-      // Should synthesize into high-level themes, NOT copy bullets
-      expect(summary).toContain("The PR includes");
+      // No bullets copied - AI uses purposeContext to write prose
       expect(summary).not.toContain("- Extract");
       expect(summary).not.toContain("- Encode");
     });
 
-    it("should extract test context from Python test files", () => {
+    it("should return commit title (AI uses purposeContext.hasTests for test mentions)", () => {
       const commits = [{ hash: "abc1234", message: "Add failure notifications" }];
       const files = [
         { path: "Buildscripts/Scripts/slack_aggregator.py", additions: 190, deletions: 10 },
         { path: "Buildscripts/Tests/test_failure_notifications.py", additions: 262, deletions: 0 },
       ];
       const summary = generatePurposeSummary(commits, files, "task/add-notifications");
-      // Should extract "failure notifications" from test_failure_notifications.py
-      expect(summary).toContain("unit tests for failure notifications");
+      // Just returns commit title - AI uses purposeContext.hasTests to mention tests
+      expect(summary).toContain("Adds failure notifications");
     });
   });
 });

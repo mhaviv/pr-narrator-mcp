@@ -352,15 +352,9 @@ export function summarizeFileChanges(
 }
 
 /**
- * Generate a purpose/summary from commits and file changes
- * Creates a concise, informative summary suitable for PR descriptions
- * 
- * Style guidelines (based on real PR analysis):
- * - Present tense verbs: "Updates", "Fixes", "Adds" (not "Updated")
- * - Write in PROSE style, not bullet points
- * - Main summary sentence, optionally followed by "The PR also..." prose
- * - Tests mentioned specifically: "includes unit tests for X"
- * - Target: ~50-300 characters for simple PRs, up to 500 for complex
+ * Generate a basic purpose/summary from commits
+ * Returns just the commit title - the AI calling this tool will enhance it
+ * using the purposeContext and purposeGuidelines provided in the response.
  */
 export function generatePurposeSummary(
   commits: Array<{ hash: string; message: string }>,
@@ -371,301 +365,36 @@ export function generatePurposeSummary(
     return "_No changes detected_";
   }
 
-  // Extract commit title and body separately
-  const commitData = commits.map(c => {
-    const lines = c.message.split("\n");
-    const firstLine = lines[0];
-    const body = lines.slice(1).join("\n").trim();
-    
-    // Clean up conventional commit prefixes and ticket prefixes from title
+  // Get the first commit title as the base summary
+  if (commits.length > 0) {
+    const firstLine = commits[0].message.split("\n")[0];
     const cleanedTitle = firstLine
       .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
-      .replace(/^[A-Z]+-\d+:\s*/i, "") // Remove ticket prefix like PROJ-123:
-      .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "") // Remove branch-type prefixes
+      .replace(/^[A-Z]+-\d+:\s*/i, "")
+      .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
       .trim();
     
-    // Extract bullet points from body if present (for understanding context, not copying)
-    const bulletPoints = body
-      .split("\n")
-      .filter(line => /^[-*]\s+/.test(line.trim()))
-      .map(line => line.trim().replace(/^[-*]\s+/, "").trim())
-      .filter(line => line.length > 0);
-    
-    return { title: cleanedTitle, body, bulletPoints };
-  }).filter(c => c.title.length > 0);
+    if (cleanedTitle) {
+      return convertToPresentTense(cleanedTitle);
+    }
+  }
 
-  const commitMessages = commitData.map(c => c.title);
-
-  // Extract the main intent from the branch name
-  let branchIntent = "";
+  // Fallback to branch name
   if (branchName) {
-    branchIntent = branchName
+    const branchIntent = branchName
       .replace(/^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style)\//i, "")
-      .replace(/[A-Z]+-\d+[-_]?/gi, "") // Remove ticket patterns like PROJ-123
+      .replace(/[A-Z]+-\d+[-_]?/gi, "")
       .replace(/[-_]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
-  }
-
-  // Determine the type of PR from files and commits
-  const isBugFix = branchName?.toLowerCase().includes("bug") || 
-                   branchName?.toLowerCase().includes("fix") ||
-                   commitMessages.some(m => /^fix/i.test(m));
-  const isRefactor = branchName?.toLowerCase().includes("refactor") ||
-                     commitMessages.some(m => /refactor/i.test(m));
-  const isUpdate = commitMessages.some(m => /^update/i.test(m));
-
-  // Categorize file changes with more detail
-  const testFiles = files.filter(f => /test|spec|__tests__/i.test(f.path));
-  const hasTests = testFiles.length > 0;
-  const hasDocs = files.some(f => /\.md$|readme|docs?\//i.test(f.path));
-  const hasCI = files.some(f => /ci|\.github|jenkinsfile|dockerfile|azure.*\.yml$|\.yaml$/i.test(f.path));
-
-  // Extract component/module names from file paths for context
-  const moduleContext = extractModuleContext(files);
-
-  // Build the summary - always in PROSE style
-  let summary = "";
-  
-  // Single commit - use the title, synthesize body into prose if available
-  if (commitData.length === 1) {
-    const { title, bulletPoints } = commitData[0];
-    summary = convertToPresentTense(title);
     
-    // Add file context if the message is short and we have module info
-    if (summary.length < 60 && moduleContext && !summary.toLowerCase().includes(moduleContext.toLowerCase())) {
-      const contextWords = moduleContext.toLowerCase().split(/\s+/);
-      const summaryWords = summary.toLowerCase().split(/\s+/);
-      const hasOverlap = contextWords.some(w => summaryWords.includes(w));
-      if (!hasOverlap) {
-        summary += ` in ${moduleContext}`;
-      }
-    }
-    
-    // If commit has bullet points, synthesize into high-level description (not copy bullets)
-    if (bulletPoints.length > 0) {
-      // Filter out test-related bullets if we'll mention tests separately
-      const relevantBullets = bulletPoints
-        .filter(b => !hasTests || !/^add (unit )?tests?/i.test(b));
-      
-      if (relevantBullets.length > 0) {
-        const synthesized = synthesizeIntoProseDescription(relevantBullets);
-        if (synthesized) {
-          summary += "\n\n" + synthesized;
-        }
-      }
-    }
-  }
-  // Multiple commits - synthesize from branch name and commits
-  else if (commitData.length > 1) {
-    // Lead with the main intent from branch name if available
     if (branchIntent) {
-      const action = isBugFix ? "Fixes" : isRefactor ? "Refactors" : isUpdate ? "Updates" : "Implements";
-      summary = `${action} ${branchIntent.toLowerCase()}`;
-      
-      // Add module context if available and not redundant
-      if (moduleContext && !summary.toLowerCase().includes(moduleContext.toLowerCase())) {
-        summary += ` in ${moduleContext}`;
-      }
-    } else {
-      // Use first commit as the main description
-      summary = convertToPresentTense(commitMessages[0]);
-    }
-    
-    // Synthesize additional commits into high-level description
-    const additionalChanges = commitMessages.slice(1)
-      .filter(m => {
-        const lower = m.toLowerCase();
-        // Skip if too similar to main summary or if it's just "add tests" etc
-        return !summary.toLowerCase().includes(lower.slice(0, 20)) && 
-               !/^(add|adds|added)\s+(test|tests|unit test)s?$/i.test(m);
-      });
-    
-    if (additionalChanges.length > 0) {
-      const synthesized = synthesizeIntoProseDescription(additionalChanges);
-      if (synthesized) {
-        summary += "\n\n" + synthesized;
-      }
-    }
-  }
-  // No commits but have files - use branch name
-  else if (branchIntent) {
-    const action = isBugFix ? "Fixes" : isRefactor ? "Refactors" : isUpdate ? "Updates" : "Implements";
-    summary = `${action} ${branchIntent.toLowerCase()}`;
-    if (moduleContext) {
-      summary += ` in ${moduleContext}`;
+      const capitalized = branchIntent.charAt(0).toUpperCase() + branchIntent.slice(1);
+      return convertToPresentTense(capitalized);
     }
   }
 
-  // Add change type context for CI/docs-only PRs
-  if (!summary && hasCI) {
-    summary = "Updates CI/CD pipeline configuration";
-  } else if (!summary && hasDocs) {
-    summary = "Updates documentation";
-  }
-
-  // Ensure first letter is capitalized
-  if (summary) {
-    summary = summary.charAt(0).toUpperCase() + summary.slice(1);
-  }
-
-  // Add test mention if tests were added/modified and not already mentioned
-  if (hasTests && !summary.toLowerCase().includes("test")) {
-    const testContext = extractTestContext(testFiles, moduleContext);
-    
-    if (summary.length < 400) {
-      summary += `\n\nThe PR also includes ${testContext}.`;
-    }
-  }
-
-  // Truncate if too long
-  if (summary.length > 500) {
-    const truncateAt = summary.lastIndexOf(" ", 497);
-    summary = summary.slice(0, truncateAt > 400 ? truncateAt : 497) + "...";
-  }
-
-  return summary || "_Add purpose description_";
-}
-
-/**
- * Extract meaningful module/component context from file paths
- */
-function extractModuleContext(files: Array<{ path: string }>): string | null {
-  if (files.length === 0) return null;
-  
-  // Common directories to skip
-  const skipDirs = new Set(["src", "lib", "app", "packages", "modules", "components", "utils", "common", "shared", "core", "internal"]);
-  
-  // Extract meaningful directory names
-  const directories: string[] = [];
-  for (const file of files) {
-    const parts = file.path.split("/");
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i].toLowerCase();
-      if (!skipDirs.has(part) && part.length > 2 && !part.startsWith(".")) {
-        directories.push(parts[i]);
-        break;
-      }
-    }
-  }
-  
-  if (directories.length === 0) return null;
-  
-  // Find the most common directory
-  const counts = new Map<string, number>();
-  for (const dir of directories) {
-    counts.set(dir, (counts.get(dir) || 0) + 1);
-  }
-  
-  const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  if (sorted.length === 0) return null;
-  
-  // Return the most common, or combine top 2 if close
-  if (sorted.length > 1 && sorted[0][1] - sorted[1][1] <= 1) {
-    return `${sorted[0][0]} and ${sorted[1][0]}`;
-  }
-  
-  return sorted[0][0];
-}
-
-/**
- * Extract context about what tests cover
- */
-function extractTestContext(testFiles: Array<{ path: string }>, moduleContext: string | null): string {
-  if (testFiles.length === 0) return "test coverage";
-  
-  // Try to extract what the tests are for from file names
-  const testSubjects: string[] = [];
-  for (const file of testFiles) {
-    const fileName = file.path.split("/").pop() || "";
-    let subject: string | null = null;
-    
-    // JS/TS pattern: "auth.test.ts", "feature.spec.js"
-    const jsMatch = fileName.match(/^(.+?)[._]?(test|spec)\.[jt]sx?$/i);
-    if (jsMatch && jsMatch[1]) {
-      subject = jsMatch[1];
-    }
-    
-    // Python pattern: "test_failure_notifications.py"
-    const pyMatch = fileName.match(/^test[_-](.+)\.py$/i);
-    if (pyMatch && pyMatch[1]) {
-      subject = pyMatch[1];
-    }
-    
-    if (subject) {
-      const cleaned = subject.replace(/[-_]/g, " ").toLowerCase();
-      if (cleaned.length > 2 && cleaned !== "index") {
-        testSubjects.push(cleaned);
-      }
-    }
-  }
-  
-  if (testSubjects.length === 1) {
-    return `unit tests for ${testSubjects[0]}`;
-  } else if (testSubjects.length > 1) {
-    return `unit tests for ${testSubjects.slice(0, 2).join(" and ")}`;
-  } else if (moduleContext) {
-    return `unit tests for ${moduleContext}`;
-  }
-  
-  return "test coverage";
-}
-
-/**
- * Extract key themes/concepts from bullet points to synthesize into high-level description
- * NOT copying bullets - extracting concepts to describe what the PR does
- */
-function extractKeyThemes(items: string[]): string[] {
-  const themes: Set<string> = new Set();
-  
-  for (const item of items) {
-    const lower = item.toLowerCase();
-    
-    // Extract key action concepts
-    if (/extract|parse|read|get|fetch|retrieve/i.test(item)) themes.add("data extraction");
-    if (/pass|send|forward|propagate/i.test(item)) themes.add("data flow");
-    if (/notify|notification|alert|message|slack|email/i.test(item)) themes.add("notifications");
-    if (/track|log|record|store|save|persist/i.test(item)) themes.add("state tracking");
-    if (/map|lookup|convert|transform/i.test(item)) themes.add("data mapping");
-    if (/prevent|avoid|dedupe|duplicate/i.test(item)) themes.add("duplicate prevention");
-    if (/config|setting|environment|env/i.test(item)) themes.add("configuration");
-    if (/auth|token|credential|permission/i.test(item)) themes.add("authentication");
-    if (/api|endpoint|request|response/i.test(item)) themes.add("API integration");
-    if (/ui|view|screen|display|render/i.test(item)) themes.add("UI changes");
-    if (/refactor|clean|reorganize|restructure/i.test(item)) themes.add("code improvements");
-    if (/fix|bug|issue|error|crash/i.test(item)) themes.add("bug fixes");
-    if (/add|implement|create|new/i.test(item) && !themes.has("notifications")) themes.add("new functionality");
-    if (/update|upgrade|bump|migrate/i.test(item)) themes.add("updates");
-    if (/remove|delete|deprecate/i.test(item)) themes.add("cleanup");
-  }
-  
-  return Array.from(themes).slice(0, 3); // Max 3 themes
-}
-
-/**
- * Synthesize bullet points into a high-level prose description
- * Does NOT copy bullets - describes what the PR accomplishes overall
- */
-function synthesizeIntoProseDescription(items: string[]): string {
-  if (items.length === 0) return "";
-  
-  const themes = extractKeyThemes(items);
-  
-  if (themes.length === 0) {
-    // Fallback: just note there are supporting changes
-    return "The PR includes supporting implementation changes.";
-  }
-  
-  if (themes.length === 1) {
-    return `The PR includes ${themes[0]}.`;
-  }
-  
-  if (themes.length === 2) {
-    return `The PR includes ${themes[0]} and ${themes[1]}.`;
-  }
-  
-  // 3 themes
-  return `The PR includes ${themes[0]}, ${themes[1]}, and ${themes[2]}.`;
+  return "_Add purpose description_";
 }
 
 /**
