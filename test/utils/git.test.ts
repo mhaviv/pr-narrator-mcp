@@ -1,8 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   extractTicketFromBranch,
   extractBranchPrefix,
 } from "../../src/utils/git.js";
+
+// Create mock functions
+const mockRaw = vi.fn();
+const mockBranchLocal = vi.fn();
+
+// Mock simple-git module
+vi.mock("simple-git", () => ({
+  default: vi.fn(() => ({
+    raw: mockRaw,
+    branchLocal: mockBranchLocal,
+    revparse: vi.fn().mockResolvedValue("/fake/.git"),
+  })),
+}));
+
+// Import after mock setup
+import { getDefaultBranch } from "../../src/utils/git.js";
 
 describe("git utilities", () => {
   describe("extractTicketFromBranch", () => {
@@ -129,6 +145,90 @@ describe("git utilities", () => {
 
     it("should return null for empty branch name", () => {
       expect(extractBranchPrefix("")).toBe(null);
+    });
+  });
+
+  describe("getDefaultBranch", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should detect 'main' from origin HEAD reference", async () => {
+      mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("main");
+    });
+
+    it("should detect 'develop' from origin HEAD reference", async () => {
+      mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("develop");
+    });
+
+    it("should detect 'master' from origin HEAD reference", async () => {
+      mockRaw.mockResolvedValue("refs/remotes/origin/master\n");
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("master");
+    });
+
+    it("should fall back to local 'main' branch when origin HEAD fails", async () => {
+      mockRaw.mockRejectedValue(new Error("not found"));
+      mockBranchLocal.mockResolvedValue({ all: ["main", "feature/test"] });
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("main");
+    });
+
+    it("should fall back to local 'master' branch when no 'main'", async () => {
+      mockRaw.mockRejectedValue(new Error("not found"));
+      mockBranchLocal.mockResolvedValue({ all: ["master", "feature/test"] });
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("master");
+    });
+
+    it("should fall back to local 'develop' branch when no main/master", async () => {
+      mockRaw.mockRejectedValue(new Error("not found"));
+      mockBranchLocal.mockResolvedValue({ all: ["develop", "feature/test"] });
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("develop");
+    });
+
+    it("should fall back to local 'development' branch", async () => {
+      mockRaw.mockRejectedValue(new Error("not found"));
+      mockBranchLocal.mockResolvedValue({ all: ["development", "feature/test"] });
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("development");
+    });
+
+    it("should use provided fallback when no common branches found", async () => {
+      mockRaw.mockRejectedValue(new Error("not found"));
+      mockBranchLocal.mockResolvedValue({ all: ["feature/test", "bugfix/issue"] });
+
+      const result = await getDefaultBranch("/fake/path", "custom-default");
+      expect(result).toBe("custom-default");
+    });
+
+    it("should default to 'main' when all detection fails", async () => {
+      mockRaw.mockRejectedValue(new Error("not found"));
+      mockBranchLocal.mockResolvedValue({ all: [] });
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("main");
+    });
+
+    it("should prioritize origin HEAD over local branches", async () => {
+      // Origin says develop, but main exists locally
+      mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
+      mockBranchLocal.mockResolvedValue({ all: ["main", "develop"] });
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("develop");
     });
   });
 });
