@@ -1,14 +1,11 @@
 {
   "commit": {
-    "format": "conventional",
+    "format": "simple",
     "maxTitleLength": 72,
     "maxBodyLineLength": 100,
-    "requireScope": false,
-    "requireBody": false,
-    "scopes": ["auth", "player", "profile", "ui", "api"],
     "prefix": {
       "enabled": true,
-      "ticketFormat": "{ticket}: ",
+      "style": "capitalized",
       "branchFallback": true
     },
     "rules": {
@@ -21,7 +18,7 @@
     "title": {
       "prefix": {
         "enabled": true,
-        "ticketFormat": "[{ticket}] ",
+        "style": "capitalized",
         "branchFallback": true
       },
       "maxLength": 100
