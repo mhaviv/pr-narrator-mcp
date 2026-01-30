@@ -171,56 +171,62 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
 }
 
 /**
- * Auto-detect the default/base branch for the repository
+ * Auto-detect the base branch for PRs in this repository
  * 
- * Priority:
- * 1. If configuredBranch is explicitly set (not "main" default), use it
- * 2. Remote HEAD reference (origin's default branch)
- * 3. Common branch names that exist locally (main, master, develop, development)
- * 4. Falls back to "main"
+ * Logic:
+ * 1. If 'develop' or 'development' branch exists → use it (gitflow pattern)
+ * 2. Otherwise, use origin's default branch (origin/HEAD)
+ * 3. Otherwise, use 'main' or 'master' if they exist
+ * 4. Falls back to 'main'
+ * 
+ * This handles both gitflow repos (develop) and trunk-based repos (main/master)
+ * without any configuration needed.
  */
 export async function getDefaultBranch(
   repoPath: string,
-  configuredBranch?: string
+  _configuredBranch?: string  // Kept for backwards compatibility but ignored
 ): Promise<string> {
-  // If user explicitly configured a branch (and it's not the default "main"), 
-  // trust their config over auto-detection
-  if (configuredBranch && configuredBranch !== "main") {
-    return configuredBranch;
-  }
-
   try {
     const validatedPath = validateRepoPath(repoPath);
     const git = createGit(validatedPath);
 
-    // Try to get the default branch from origin's HEAD reference
+    // Get local branches
+    const branches = await git.branchLocal();
+    
+    // Priority 1: If develop/development exists, it's likely gitflow - use it
+    // This is the most common pattern for repos where PRs target develop
+    if (branches.all.includes("develop")) {
+      return "develop";
+    }
+    if (branches.all.includes("development")) {
+      return "development";
+    }
+
+    // Priority 2: Try origin's default branch
     try {
       const remoteHead = await git.raw(["symbolic-ref", "refs/remotes/origin/HEAD"]);
       if (remoteHead) {
-        // Returns something like "refs/remotes/origin/main"
         const match = remoteHead.trim().match(/refs\/remotes\/origin\/(.+)/);
         if (match && match[1]) {
           return match[1];
         }
       }
     } catch {
-      // Remote HEAD not set, try other methods
+      // Remote HEAD not set, continue
     }
 
-    // Check which common branches exist locally
-    const branches = await git.branchLocal();
-    const commonBranches = ["main", "master", "develop", "development"];
-    
-    for (const branch of commonBranches) {
-      if (branches.all.includes(branch)) {
-        return branch;
-      }
+    // Priority 3: Check for main/master
+    if (branches.all.includes("main")) {
+      return "main";
+    }
+    if (branches.all.includes("master")) {
+      return "master";
     }
 
-    // Fall back to configured or "main"
-    return configuredBranch || "main";
+    // Fallback
+    return "main";
   } catch {
-    return configuredBranch || "main";
+    return "main";
   }
 }
 

@@ -153,91 +153,69 @@ describe("git utilities", () => {
       vi.clearAllMocks();
     });
 
-    it("should detect 'main' from origin HEAD reference", async () => {
+    it("should prioritize 'develop' when it exists (gitflow pattern)", async () => {
+      mockBranchLocal.mockResolvedValue({ all: ["main", "develop", "feature/test"] });
+      mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
+
+      const result = await getDefaultBranch("/fake/path");
+      // develop wins over origin/HEAD because gitflow repos use develop for PRs
+      expect(result).toBe("develop");
+    });
+
+    it("should prioritize 'development' when it exists", async () => {
+      mockBranchLocal.mockResolvedValue({ all: ["main", "development", "feature/test"] });
+      mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
+
+      const result = await getDefaultBranch("/fake/path");
+      expect(result).toBe("development");
+    });
+
+    it("should use origin HEAD when no develop branch exists", async () => {
+      mockBranchLocal.mockResolvedValue({ all: ["main", "feature/test"] });
       mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
 
       const result = await getDefaultBranch("/fake/path");
       expect(result).toBe("main");
     });
 
-    it("should detect 'develop' from origin HEAD reference", async () => {
-      mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
-
-      const result = await getDefaultBranch("/fake/path");
-      expect(result).toBe("develop");
-    });
-
-    it("should detect 'master' from origin HEAD reference", async () => {
+    it("should detect 'master' from origin HEAD when no develop", async () => {
+      mockBranchLocal.mockResolvedValue({ all: ["master", "feature/test"] });
       mockRaw.mockResolvedValue("refs/remotes/origin/master\n");
 
       const result = await getDefaultBranch("/fake/path");
       expect(result).toBe("master");
     });
 
-    it("should fall back to local 'main' branch when origin HEAD fails", async () => {
-      mockRaw.mockRejectedValue(new Error("not found"));
+    it("should fall back to local 'main' when origin HEAD fails", async () => {
       mockBranchLocal.mockResolvedValue({ all: ["main", "feature/test"] });
+      mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
       expect(result).toBe("main");
     });
 
-    it("should fall back to local 'master' branch when no 'main'", async () => {
-      mockRaw.mockRejectedValue(new Error("not found"));
+    it("should fall back to local 'master' when no 'main'", async () => {
       mockBranchLocal.mockResolvedValue({ all: ["master", "feature/test"] });
+      mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
       expect(result).toBe("master");
     });
 
-    it("should fall back to local 'develop' branch when no main/master", async () => {
-      mockRaw.mockRejectedValue(new Error("not found"));
-      mockBranchLocal.mockResolvedValue({ all: ["develop", "feature/test"] });
-
-      const result = await getDefaultBranch("/fake/path");
-      expect(result).toBe("develop");
-    });
-
-    it("should fall back to local 'development' branch", async () => {
-      mockRaw.mockRejectedValue(new Error("not found"));
-      mockBranchLocal.mockResolvedValue({ all: ["development", "feature/test"] });
-
-      const result = await getDefaultBranch("/fake/path");
-      expect(result).toBe("development");
-    });
-
-    it("should use configured branch when explicitly set (not main)", async () => {
-      // Even if origin HEAD says main, configured branch wins
-      mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
-      mockBranchLocal.mockResolvedValue({ all: ["main", "develop"] });
-
-      const result = await getDefaultBranch("/fake/path", "develop");
-      expect(result).toBe("develop");
-    });
-
-    it("should auto-detect when configured branch is 'main' (default)", async () => {
-      // When config is "main" (default), still try auto-detection
-      mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
-
-      const result = await getDefaultBranch("/fake/path", "main");
-      expect(result).toBe("develop");
-    });
-
-    it("should default to 'main' when all detection fails", async () => {
-      mockRaw.mockRejectedValue(new Error("not found"));
+    it("should default to 'main' when no branches found", async () => {
       mockBranchLocal.mockResolvedValue({ all: [] });
+      mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
       expect(result).toBe("main");
     });
 
-    it("should prioritize origin HEAD over local branches when no config", async () => {
-      // Origin says develop, main exists locally - origin wins
-      mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
-      mockBranchLocal.mockResolvedValue({ all: ["main", "develop"] });
+    it("should default to 'main' when only feature branches exist", async () => {
+      mockBranchLocal.mockResolvedValue({ all: ["feature/test", "bugfix/issue"] });
+      mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
-      expect(result).toBe("develop");
+      expect(result).toBe("main");
     });
   });
 });
