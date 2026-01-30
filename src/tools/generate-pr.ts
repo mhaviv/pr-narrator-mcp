@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadConfig } from "../config/loader.js";
+import type { Config, PrSection } from "../config/schema.js";
 import {
   getCurrentBranch,
   getBranchChanges,
@@ -8,8 +8,7 @@ import {
   extractTicketsFromCommits,
   detectBaseBranch,
 } from "../utils/git.js";
-import { formatPrefix, truncate, formatTicketLink } from "../utils/formatters.js";
-import type { PrSection } from "../config/schema.js";
+import { formatPrefix, truncate, formatTicketLink, generatePurposeSummary } from "../utils/formatters.js";
 
 export const generatePrSchema = z.object({
   repoPath: z
@@ -54,30 +53,22 @@ export interface GeneratePrResult {
     tickets: string[];
     filesChanged: number;
   };
-  suggestedActions: Array<{
-    action: string;
-    mcpServer: string | null;
-    tool: string;
-    params: Record<string, unknown>;
-  }>;
   warnings: string[];
 }
 
-/**
- * Generate content for a PR section
- */
 async function generateSectionContent(
   section: PrSection,
   context: {
     commits: Array<{ hash: string; message: string }>;
+    files: Array<{ path: string; additions: number; deletions: number }>;
     tickets: string[];
     ticketLinkFormat: string | undefined;
     providedContent: Record<string, string | undefined>;
+    branchName: string | null;
   }
 ): Promise<string> {
   const sectionNameLower = section.name.toLowerCase();
 
-  // Check if content was provided
   if (context.providedContent[section.name]) {
     return context.providedContent[section.name]!;
   }
@@ -85,7 +76,6 @@ async function generateSectionContent(
     return context.providedContent[sectionNameLower]!;
   }
 
-  // Auto-populate if configured
   if (section.autoPopulate === "commits") {
     if (context.commits.length === 0) {
       return "_No commits found_";
@@ -97,14 +87,20 @@ async function generateSectionContent(
 
   if (section.autoPopulate === "extracted") {
     if (context.tickets.length === 0) {
-      return "_No tickets found_";
+      return ""; // No tickets = omit section entirely
     }
+    // Plain URLs, one per line (no markdown formatting)
     return context.tickets
-      .map((t) => `- ${formatTicketLink(t, context.ticketLinkFormat)}`)
+      .map((t) => context.ticketLinkFormat 
+        ? context.ticketLinkFormat.replace("{ticket}", t)
+        : t)
       .join("\n");
   }
 
-  // Return placeholder for required sections, empty for optional
+  if (section.autoPopulate === "purpose") {
+    return generatePurposeSummary(context.commits, context.files, context.branchName);
+  }
+
   if (section.required) {
     return `_[Add ${section.name.toLowerCase()} here]_`;
   }
@@ -116,29 +112,25 @@ async function generateSectionContent(
  * Generate a complete PR with title and description
  */
 export async function generatePr(
-  input: GeneratePrInput
+  input: GeneratePrInput,
+  config: Config
 ): Promise<GeneratePrResult> {
   const repoPath = input.repoPath || process.cwd();
   const warnings: string[] = [];
-
-  // Load config
-  const { config } = await loadConfig(repoPath);
   const prConfig = config.pr;
   const prTitleConfig = prConfig.title;
-  
+
   // Detect base branch - prefer input parameter, then config, then auto-detect
   const baseBranchResult = await detectBaseBranch(
-    repoPath, 
+    repoPath,
     input.baseBranch || config.baseBranch
   );
   const baseBranch = baseBranchResult.branch;
-  
-  // Warn if multiple base branches detected and user hasn't specified one
+
   if (baseBranchResult.isAmbiguous) {
     warnings.push(
       `Multiple base branches found: ${baseBranch}, ${baseBranchResult.alternatives.join(", ")}. ` +
-      `Using '${baseBranch}'. To use a different branch, set baseBranch in pr-narrator.config.json ` +
-      `or pass baseBranch parameter.`
+      `Using '${baseBranch}'. Set BASE_BRANCH env var to specify.`
     );
   }
 
@@ -180,11 +172,16 @@ export async function generatePr(
   }
 
   // === Generate Title ===
-  const titlePrefix = formatPrefix(prTitleConfig.prefix, ticket, branchPrefix);
+  const resolvedPrefixConfig = {
+    ...prTitleConfig.prefix,
+    style: prTitleConfig.prefix.style === "inherit"
+      ? config.commit.prefix.style
+      : prTitleConfig.prefix.style,
+  };
+  const titlePrefix = formatPrefix(resolvedPrefixConfig, ticket, branchPrefix);
 
   let titleSummary = input.titleSummary || "";
   if (!titleSummary && branchName) {
-    // Extract summary from branch name
     let branchSummary = branchName;
     branchSummary = branchSummary.replace(
       /^(feature|task|bug|hotfix|fix|chore|refactor)\//i,
@@ -200,8 +197,12 @@ export async function generatePr(
     }
     titleSummary = branchSummary
       .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/\s+/g, " ")
       .trim();
+
+    if (titleSummary.length > 0) {
+      titleSummary = titleSummary.charAt(0).toUpperCase() + titleSummary.slice(1);
+    }
   }
   if (!titleSummary) {
     titleSummary = "[Describe your changes]";
@@ -214,21 +215,27 @@ export async function generatePr(
 
   // === Generate Description ===
   const providedContent: Record<string, string | undefined> = {
+    // Map both "summary" and "purpose" inputs to Purpose section
     summary: input.summary,
     Summary: input.summary,
+    purpose: input.summary,
+    Purpose: input.summary,
     "test plan": input.testPlan,
     "Test Plan": input.testPlan,
     ...input.additionalSections,
   };
 
   const descriptionParts: string[] = [];
+  const files = branchChanges?.files ?? [];
 
   for (const sectionConfig of prConfig.sections) {
     const content = await generateSectionContent(sectionConfig, {
       commits,
+      files,
       tickets,
       ticketLinkFormat: config.ticketLinkFormat,
       providedContent,
+      branchName,
     });
 
     if (!content && !sectionConfig.required) {
@@ -241,31 +248,6 @@ export async function generatePr(
   }
 
   const description = descriptionParts.join("\n\n");
-
-  // === Build Suggested Actions ===
-  const suggestedActions: Array<{
-    action: string;
-    mcpServer: string | null;
-    tool: string;
-    params: Record<string, unknown>;
-  }> = [];
-
-  if (config.integrations?.vcs) {
-    const vcs = config.integrations.vcs;
-    suggestedActions.push({
-      action: "create_pr",
-      mcpServer: vcs.mcpServer,
-      tool: "create_pull_request",
-      params: {
-        owner: vcs.defaultOwner || undefined,
-        repo: vcs.defaultRepo || undefined,
-        title,
-        body: description,
-        base: baseBranch,
-        head: branchName,
-      },
-    });
-  }
 
   return {
     title,
@@ -281,7 +263,6 @@ export async function generatePr(
       tickets,
       filesChanged,
     },
-    suggestedActions,
     warnings,
   };
 }
@@ -290,31 +271,18 @@ export const generatePrTool = {
   name: "generate_pr",
   description: `Generate a complete PR with title and description.
 
-This is the main tool for PR creation - it combines generate_pr_title and 
-generate_pr_description into a single call.
-
 Base Branch:
 - Auto-detects from repo (checks for main, master, develop)
-- If multiple branches exist (e.g., main AND develop), returns warning
-- Use baseBranch parameter to specify explicitly
+- Set BASE_BRANCH env var to specify
 
 Title:
-- Automatically extracts ticket from branch name
+- Extracts ticket from branch name
 - Falls back to branch prefix (task/, bug/, feature/)
-- Can derive summary from branch name if not provided
 
 Description:
-- Generates all configured sections
+- Auto-populates Purpose from commits and file changes
 - Auto-populates Changes from commits
-- Auto-populates Tickets from branch/commits
-- Supports custom sections
-
-Returns:
-- title: Complete PR title with prefix
-- description: Full markdown description
-- context: All extracted context including baseBranch alternatives
-- warnings: Any ambiguity warnings (e.g., multiple base branches found)
-- suggestedActions: Ready-to-execute VCS MCP calls (if configured)`,
+- Auto-populates Tickets from branch/commits`,
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -324,7 +292,7 @@ Returns:
       },
       baseBranch: {
         type: "string",
-        description: "Base branch to compare against (e.g., 'main', 'develop'). Auto-detects if not specified.",
+        description: "Base branch to compare against. Auto-detects if not specified.",
       },
       titleSummary: {
         type: "string",

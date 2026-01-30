@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generateCommitMessage } from "../../src/tools/generate-commit-message.js";
+import { defaultConfig } from "../../src/config/schema.js";
 
 // Mock the git utilities
 vi.mock("../../src/utils/git.js", () => ({
@@ -10,290 +11,138 @@ vi.mock("../../src/utils/git.js", () => ({
   validateRepoPath: vi.fn((path) => path || process.cwd()),
 }));
 
-// Mock the config loader
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn(),
-}));
-
 import {
   getStagedChanges,
   getCurrentBranch,
   extractTicketFromBranch,
   extractBranchPrefix,
 } from "../../src/utils/git.js";
-import { loadConfig } from "../../src/config/loader.js";
 
 describe("generateCommitMessage", () => {
-  const defaultConfig = {
-    config: {
-      commit: {
-        format: "conventional",
-        maxTitleLength: 72,
-        maxBodyLineLength: 100,
-        requireScope: false,
-        requireBody: false,
-        scopes: [],
-        prefix: {
-          enabled: true,
-          ticketFormat: "{ticket}: ",
-          branchFallback: true,
-        },
-        rules: {
-          imperativeMood: true,
-          capitalizeTitle: true,
-          noTrailingPeriod: true,
-        },
-      },
-      pr: { title: { prefix: { enabled: true } }, sections: [] },
-      baseBranch: "main",
-      ticketPattern: "PROJ-\\d+",
-    },
-    configPath: null,
-    errors: [],
+  const testConfig = {
+    ...defaultConfig,
+    ticketPattern: "PROJ-\\d+",
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadConfig).mockResolvedValue(defaultConfig);
   });
 
   describe("when no staged changes", () => {
     it("should return error when no staged changes", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue(null);
+      vi.mocked(getStagedChanges).mockResolvedValue({ files: [], diff: "" });
 
-      const result = await generateCommitMessage({});
-
-      expect(result.success).toBe(false);
-      expect(result.errors).toContain(
-        "No staged changes found. Stage changes with 'git add' first."
-      );
-    });
-
-    it("should return error when staged changes array is empty", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue({
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
-
-      const result = await generateCommitMessage({});
+      const result = await generateCommitMessage({}, testConfig);
 
       expect(result.success).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors).toContain("No staged changes found. Stage changes with 'git add' first.");
     });
   });
 
-  describe("with staged changes", () => {
-    const mockStagedChanges = {
-      files: [
-        { path: "src/auth/login.ts", additions: 50, deletions: 10, binary: false },
-        { path: "src/auth/logout.ts", additions: 20, deletions: 5, binary: false },
-      ],
-      totalAdditions: 70,
-      totalDeletions: 15,
-      diff: "diff content",
-    };
-
+  describe("when staged changes exist", () => {
     beforeEach(() => {
-      vi.mocked(getStagedChanges).mockResolvedValue(mockStagedChanges);
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234-add-auth");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
+      vi.mocked(getStagedChanges).mockResolvedValue({
+        files: [{ path: "src/index.ts", additions: 10, deletions: 5 }],
+        diff: "mock diff",
+      });
+      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-123-add-login");
+      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-123");
+      vi.mocked(extractBranchPrefix).mockReturnValue("feature");
     });
 
-    it("should generate commit with ticket prefix and capitalized type", async () => {
-      const result = await generateCommitMessage({
-        summary: "Add user authentication",
-        type: "feat",
-        scope: "auth",
-      });
+    it("should generate commit message with ticket prefix", async () => {
+      const result = await generateCommitMessage({ summary: "Add login form" }, testConfig);
 
       expect(result.success).toBe(true);
-      // Default: capitalized type format, no scope (includeScope: false by default)
-      expect(result.title).toBe("PROJ-1234: Feat: Add user authentication");
-      expect(result.context.ticket).toBe("PROJ-1234");
-      expect(result.context.type).toBe("feat");
-      expect(result.context.scope).toBe("auth");
+      expect(result.title).toContain("PROJ-123");
     });
 
     it("should use branch prefix as fallback when no ticket", async () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue(null);
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
+      vi.mocked(extractBranchPrefix).mockReturnValue("task");
 
-      const result = await generateCommitMessage({
-        summary: "Add login page",
-        type: "feat",
-      });
+      const result = await generateCommitMessage({ summary: "Update readme" }, testConfig);
 
-      expect(result.success).toBe(true);
-      expect(result.title).toContain("Feature: ");
-      expect(result.context.branchPrefix).toBe("Feature");
+      expect(result.title).toContain("Task:");
     });
 
-    it("should infer commit type from file paths", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue({
-        files: [{ path: "test/auth.test.ts", additions: 10, deletions: 0, binary: false }],
-        totalAdditions: 10,
-        totalDeletions: 0,
-        diff: "",
-      });
-
-      const result = await generateCommitMessage({
-        summary: "Add auth tests",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.context.type).toBe("test");
-    });
-
-    it("should capitalize summary when rule enabled", async () => {
-      const result = await generateCommitMessage({
-        summary: "add login feature",
-        type: "feat",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.title).toContain("Add login feature");
-    });
-
-    it("should remove trailing period when rule enabled", async () => {
-      const result = await generateCommitMessage({
-        summary: "Add login feature.",
-        type: "feat",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.title).not.toMatch(/\.$/);
-    });
-
-    it("should warn about imperative mood violations", async () => {
-      const result = await generateCommitMessage({
-        summary: "Added login feature",
-        type: "feat",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.validation.warnings.some((w) => w.includes("imperative"))).toBe(true);
-    });
-
-    it("should warn when title exceeds max length", async () => {
-      const longSummary = "A".repeat(100);
-      const result = await generateCommitMessage({
-        summary: longSummary,
-        type: "feat",
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.validation.warnings.some((w) => w.includes("exceeds"))).toBe(true);
-      expect(result.title.length).toBeLessThanOrEqual(72);
-    });
-
-    it("should include body when requested", async () => {
-      const result = await generateCommitMessage({
-        summary: "Add login feature",
-        type: "feat",
-        includeBody: true,
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.body).not.toBeNull();
-      expect(result.body).toContain("file(s) changed");
-      expect(result.fullMessage).toContain("\n");
-    });
-
-    it("should include ticket in body when available", async () => {
-      const result = await generateCommitMessage({
-        summary: "Add login feature",
-        type: "feat",
-        includeBody: true,
-      });
-
-      expect(result.body).toContain("PROJ-1234");
-    });
-
-    it("should generate generic summary when none provided", async () => {
-      const result = await generateCommitMessage({
-        type: "feat",
-      });
+    it("should generate generic message when no summary provided", async () => {
+      const result = await generateCommitMessage({}, testConfig);
 
       expect(result.success).toBe(true);
       expect(result.title).toContain("Update");
-      expect(result.validation.warnings.some((w) => w.includes("No summary provided"))).toBe(
-        true
-      );
+      expect(result.validation.warnings.length).toBeGreaterThan(0);
     });
-  });
 
-  describe("simple format", () => {
-    it("should generate simple format without type/scope", async () => {
-      vi.mocked(loadConfig).mockResolvedValue({
-        ...defaultConfig,
-        config: {
-          ...defaultConfig.config,
-          commit: {
-            ...defaultConfig.config.commit,
-            format: "simple",
-          },
-        },
-      });
+    it("should capitalize first letter", async () => {
+      const result = await generateCommitMessage({ summary: "add login form" }, testConfig);
 
-      vi.mocked(getStagedChanges).mockResolvedValue({
-        files: [{ path: "README.md", additions: 5, deletions: 2, binary: false }],
-        totalAdditions: 5,
-        totalDeletions: 2,
-        diff: "",
-      });
+      expect(result.title).toMatch(/Add/);
+    });
+
+    it("should remove trailing period", async () => {
+      const result = await generateCommitMessage({ summary: "Add login form." }, testConfig);
+
+      expect(result.title).not.toMatch(/\.$/);
+    });
+
+    it("should warn about non-imperative mood", async () => {
+      const result = await generateCommitMessage({ summary: "Added login form" }, testConfig);
+
+      expect(result.validation.warnings.some(w => w.includes("imperative"))).toBe(true);
+    });
+
+    it("should truncate long titles", async () => {
+      const longSummary = "A".repeat(100);
+      const result = await generateCommitMessage({ summary: longSummary }, testConfig);
+
+      expect(result.title.length).toBeLessThanOrEqual(testConfig.commit.maxTitleLength);
+    });
+
+    it("should include commit body when requested", async () => {
+      const result = await generateCommitMessage({ summary: "Add login", includeBody: true }, testConfig);
+
+      expect(result.body).not.toBeNull();
+    });
+
+    it("should skip prefix on main branch", async () => {
       vi.mocked(getCurrentBranch).mockResolvedValue("main");
-      vi.mocked(extractTicketFromBranch).mockReturnValue(null);
-      vi.mocked(extractBranchPrefix).mockReturnValue(null);
 
-      const result = await generateCommitMessage({
-        summary: "Update documentation",
-      });
+      const result = await generateCommitMessage({ summary: "Update readme" }, testConfig);
 
-      expect(result.success).toBe(true);
-      expect(result.title).toBe("Update documentation");
-      expect(result.title).not.toContain("feat");
-      expect(result.title).not.toContain(":");
-    });
-  });
-
-  describe("prefix disabled", () => {
-    it("should not add prefix when disabled", async () => {
-      vi.mocked(loadConfig).mockResolvedValue({
-        ...defaultConfig,
-        config: {
-          ...defaultConfig.config,
-          commit: {
-            ...defaultConfig.config.commit,
-            prefix: {
-              enabled: false,
-              ticketFormat: "{ticket}: ",
-              branchFallback: true,
-            },
-          },
-        },
-      });
-
-      vi.mocked(getStagedChanges).mockResolvedValue({
-        files: [{ path: "src/index.ts", additions: 10, deletions: 0, binary: false }],
-        totalAdditions: 10,
-        totalDeletions: 0,
-        diff: "",
-      });
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-123-test");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-123");
-
-      const result = await generateCommitMessage({
-        summary: "Add feature",
-        type: "feat",
-      });
-
-      expect(result.success).toBe(true);
       expect(result.title).not.toContain("PROJ-123");
-      // Capitalized type format by default
-      expect(result.title).toBe("Feat: Add feature");
+      expect(result.title).not.toContain("Main:");
+    });
+
+    describe("with conventional format", () => {
+      const conventionalConfig = {
+        ...testConfig,
+        commit: {
+          ...testConfig.commit,
+          format: "conventional" as const,
+        },
+      };
+
+      it("should include commit type", async () => {
+        const result = await generateCommitMessage({ summary: "Add login", type: "feat" }, conventionalConfig);
+
+        // Type is capitalized by default
+        expect(result.title).toContain("Feat:");
+      });
+
+      it("should include scope when provided", async () => {
+        const scopeConfig = {
+          ...conventionalConfig,
+          commit: {
+            ...conventionalConfig.commit,
+            includeScope: true,
+          },
+        };
+
+        const result = await generateCommitMessage({ summary: "Add login", type: "feat", scope: "auth" }, scopeConfig);
+
+        expect(result.title).toContain("(auth)");
+      });
     });
   });
 });

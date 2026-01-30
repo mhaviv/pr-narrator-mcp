@@ -11,6 +11,7 @@ import {
   inferScope,
   formatConventionalCommit,
   summarizeFileChanges,
+  generatePurposeSummary,
 } from "../../src/utils/formatters.js";
 
 describe("formatters", () => {
@@ -278,6 +279,157 @@ describe("formatters", () => {
 
     it("should handle empty files array", () => {
       expect(summarizeFileChanges([])).toBe("No files changed");
+    });
+  });
+
+  describe("generatePurposeSummary", () => {
+    it("should generate summary from single commit", () => {
+      const commits = [{ hash: "abc1234", message: "Add user authentication" }];
+      const files = [
+        { path: "src/auth/login.ts", additions: 50, deletions: 0 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "feature/add-user-authentication");
+      expect(summary).toContain("Adds user authentication");
+    });
+
+    it("should extract summary from first commit and clean conventional commit prefix", () => {
+      const commits = [
+        { hash: "abc1234", message: "feat(auth): Add login functionality" },
+        { hash: "def5678", message: "Add tests" },
+      ];
+      const files = [
+        { path: "src/auth/login.ts", additions: 50, deletions: 10 },
+      ];
+      const summary = generatePurposeSummary(commits, files, null);
+      // Should convert "Add" to "Adds" (third person present tense)
+      expect(summary).toContain("Adds login functionality");
+    });
+
+    it("should synthesize multiple commits into prose", () => {
+      const commits = [
+        { hash: "abc1234", message: "Update SDK version" },
+        { hash: "def5678", message: "Fix config loading" },
+        { hash: "ghi9012", message: "Add new API endpoint" },
+      ];
+      const files = [
+        { path: "src/index.ts", additions: 100, deletions: 50 },
+        { path: "src/utils.ts", additions: 20, deletions: 5 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "task/update-sdk");
+      expect(summary).toContain("update sdk");
+      // Should be prose style, not bullet points
+      expect(summary).toContain("The PR also");
+      expect(summary).toContain("fixes config loading");
+      expect(summary).toContain("adds new API endpoint");
+      // Should NOT have bullet points
+      expect(summary).not.toContain("- ");
+    });
+
+    it("should handle empty commits and files", () => {
+      const summary = generatePurposeSummary([], [], null);
+      expect(summary).toBe("_No changes detected_");
+    });
+
+    it("should add test mention when tests are included", () => {
+      const commits = [{ hash: "abc1234", message: "Add feature" }];
+      const files = [
+        { path: "src/auth/feature.ts", additions: 50, deletions: 0 },
+        { path: "src/auth/__tests__/feature.test.ts", additions: 100, deletions: 0 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "task/add-feature");
+      // Should include specific test context
+      expect(summary).toContain("unit tests for feature");
+    });
+
+    it("should handle CI-only changes", () => {
+      const commits = [{ hash: "abc1234", message: "Update CI pipeline" }];
+      const files = [
+        { path: ".github/workflows/ci.yml", additions: 20, deletions: 5 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "task/update-ci");
+      expect(summary).toContain("Updates CI pipeline");
+    });
+
+    it("should remove ticket patterns from branch name", () => {
+      const commits = [{ hash: "abc1234", message: "Fix login issue" }];
+      const files = [{ path: "src/fix.ts", additions: 10, deletions: 5 }];
+      const summary = generatePurposeSummary(commits, files, "bug/JIRA-123-fix-login-issue");
+      expect(summary).not.toContain("JIRA-123");
+      expect(summary).toContain("Fixes");
+    });
+
+    it("should convert past tense to present tense", () => {
+      const commits = [{ hash: "abc1234", message: "Added new feature" }];
+      const files = [{ path: "src/feature.ts", additions: 10, deletions: 5 }];
+      const summary = generatePurposeSummary(commits, files, null);
+      expect(summary).toContain("Adds new feature");
+    });
+
+    it("should stay within 500 character limit", () => {
+      const commits = Array(50).fill(null).map((_, i) => ({
+        hash: `hash${i}`,
+        message: `Very long commit message number ${i} with lots of detail`,
+      }));
+      const files = Array(100).fill(null).map((_, i) => ({
+        path: `src/components/very/deeply/nested/component${i}.ts`,
+        additions: 100,
+        deletions: 50,
+      }));
+      const summary = generatePurposeSummary(commits, files, "feature/very-long-branch-name-with-lots-of-detail");
+      expect(summary.length).toBeLessThanOrEqual(500);
+    });
+
+    it("should use prose for 1-3 commit body bullets", () => {
+      const commits = [{
+        hash: "abc1234",
+        message: `Add new feature
+
+- Update the API endpoint
+- Fix the validation logic
+- Add error handling`,
+      }];
+      const files = [
+        { path: "src/api.ts", additions: 50, deletions: 10 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "task/add-feature");
+      
+      // Should use prose style for ≤3 items
+      expect(summary).toContain("The PR also");
+      expect(summary).not.toContain("The PR also addresses the following:");
+      expect(summary).not.toContain("- ");
+    });
+
+    it("should use bullets for 4+ commit body bullets", () => {
+      const commits = [{
+        hash: "abc1234",
+        message: `Ping PR author in thread when Slack build notifications fail
+
+- Extract PR author from GitHub PR metadata
+- Encode author in tag suffix for Azure pipelines
+- Add threaded failure notification in slack_aggregator.py
+- Look up Slack user ID from SLACK_USER_{username} env variables`,
+      }];
+      const files = [
+        { path: "Buildscripts/Scripts/slack_aggregator.py", additions: 190, deletions: 10 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "task/slack-build-notification-ping-pr-author-on-failure");
+      
+      // Should include the main message
+      expect(summary).toContain("Ping PR author in thread when Slack build notifications fail");
+      // 4+ items should use bullet format
+      expect(summary).toContain("The PR also addresses the following:");
+      expect(summary).toContain("- ");
+    });
+
+    it("should extract test context from Python test files", () => {
+      const commits = [{ hash: "abc1234", message: "Add failure notifications" }];
+      const files = [
+        { path: "Buildscripts/Scripts/slack_aggregator.py", additions: 190, deletions: 10 },
+        { path: "Buildscripts/Tests/test_failure_notifications.py", additions: 262, deletions: 0 },
+      ];
+      const summary = generatePurposeSummary(commits, files, "task/add-notifications");
+      // Should extract "failure notifications" from test_failure_notifications.py
+      expect(summary).toContain("unit tests for failure notifications");
     });
   });
 });

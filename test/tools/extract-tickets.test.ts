@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractTickets } from "../../src/tools/extract-tickets.js";
+import { defaultConfig } from "../../src/config/schema.js";
 
 // Mock the git utilities
 vi.mock("../../src/utils/git.js", () => ({
@@ -9,38 +10,18 @@ vi.mock("../../src/utils/git.js", () => ({
   getDefaultBranch: vi.fn().mockResolvedValue("main"),
 }));
 
-// Mock the config loader
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn(),
-}));
-
 import { getCurrentBranch, extractTicketFromBranch, extractTicketsFromCommits } from "../../src/utils/git.js";
-import { loadConfig } from "../../src/config/loader.js";
 
 describe("extractTickets", () => {
+  const testConfig = {
+    ...defaultConfig,
+    ticketPattern: "PROJ-\\d+",
+    ticketLinkFormat: "https://your-ticketing-system.com/browse/{ticket}",
+    baseBranch: "develop",
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Default mock implementations
-    vi.mocked(loadConfig).mockResolvedValue({
-      config: {
-        ticketPattern: "PROJ-\\d+",
-        ticketLinkFormat: "https://your-ticketing-system.com/browse/{ticket}",
-        baseBranch: "develop",
-        commit: {
-          format: "conventional",
-          maxTitleLength: 72,
-          maxBodyLineLength: 100,
-          requireScope: false,
-          requireBody: false,
-          prefix: { enabled: true, ticketFormat: "{ticket}: ", branchFallback: true },
-          rules: { imperativeMood: true, capitalizeTitle: true, noTrailingPeriod: true },
-        },
-        pr: { title: { prefix: { enabled: true }, maxLength: 100 }, sections: [] },
-      },
-      configPath: null,
-      errors: [],
-    });
   });
 
   describe("extracting from branch", () => {
@@ -49,7 +30,7 @@ describe("extractTickets", () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
       vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
 
-      const result = await extractTickets({ includeCommits: false });
+      const result = await extractTickets({ includeCommits: false }, testConfig);
 
       expect(result.hasTickets).toBe(true);
       expect(result.uniqueTickets).toContain("PROJ-1234");
@@ -61,7 +42,7 @@ describe("extractTickets", () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
       vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
 
-      const result = await extractTickets({ includeCommits: false });
+      const result = await extractTickets({ includeCommits: false }, testConfig);
 
       expect(result.tickets[0].link).toBe("https://your-ticketing-system.com/browse/PROJ-1234");
       expect(result.markdownList).toContain("[PROJ-1234]");
@@ -75,7 +56,7 @@ describe("extractTickets", () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue(null);
       vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-5678", "PROJ-9012"]);
 
-      const result = await extractTickets({ includeCommits: true });
+      const result = await extractTickets({ includeCommits: true }, testConfig);
 
       expect(result.hasTickets).toBe(true);
       expect(result.uniqueTickets).toContain("PROJ-5678");
@@ -88,7 +69,7 @@ describe("extractTickets", () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue(null);
       vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-5678"]);
 
-      const result = await extractTickets({ includeCommits: false });
+      const result = await extractTickets({ includeCommits: false }, testConfig);
 
       expect(extractTicketsFromCommits).not.toHaveBeenCalled();
       expect(result.hasTickets).toBe(false);
@@ -104,7 +85,7 @@ describe("extractTickets", () => {
       const result = await extractTickets({
         includeCommits: false,
         additionalText: "This PR fixes PROJ-1111 and PROJ-2222",
-      });
+      }, testConfig);
 
       expect(result.hasTickets).toBe(true);
       expect(result.uniqueTickets).toContain("PROJ-1111");
@@ -122,9 +103,8 @@ describe("extractTickets", () => {
       const result = await extractTickets({
         includeCommits: true,
         additionalText: "Related to PROJ-1234",
-      });
+      }, testConfig);
 
-      // Should have PROJ-1234 only once (from branch) and PROJ-5678 (from commits)
       expect(result.uniqueTickets).toHaveLength(2);
       expect(result.uniqueTickets.filter(t => t === "PROJ-1234")).toHaveLength(1);
     });
@@ -134,9 +114,8 @@ describe("extractTickets", () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue("proj-1234");
       vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
 
-      const result = await extractTickets({ includeCommits: false });
+      const result = await extractTickets({ includeCommits: false }, testConfig);
 
-      // Should be normalized to uppercase
       expect(result.uniqueTickets).toContain("PROJ-1234");
     });
   });
@@ -147,7 +126,7 @@ describe("extractTickets", () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue(null);
       vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
 
-      const result = await extractTickets({});
+      const result = await extractTickets({}, testConfig);
 
       expect(result.hasTickets).toBe(false);
       expect(result.uniqueTickets).toHaveLength(0);
@@ -157,27 +136,10 @@ describe("extractTickets", () => {
 
   describe("no ticket pattern configured", () => {
     it("should handle missing ticket pattern", async () => {
-      vi.mocked(loadConfig).mockResolvedValue({
-        config: {
-          ticketPattern: undefined,
-          baseBranch: "main",
-          commit: {
-            format: "conventional",
-            maxTitleLength: 72,
-            maxBodyLineLength: 100,
-            requireScope: false,
-            requireBody: false,
-            prefix: { enabled: true, ticketFormat: "{ticket}: ", branchFallback: true },
-            rules: { imperativeMood: true, capitalizeTitle: true, noTrailingPeriod: true },
-          },
-          pr: { title: { prefix: { enabled: true }, maxLength: 100 }, sections: [] },
-        },
-        configPath: null,
-        errors: [],
-      });
+      const configWithoutPattern = { ...defaultConfig, ticketPattern: undefined };
       vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234");
 
-      const result = await extractTickets({});
+      const result = await extractTickets({}, configWithoutPattern);
 
       expect(result.hasTickets).toBe(false);
       expect(result.ticketPattern).toBe(null);

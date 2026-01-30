@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { loadConfig } from "../config/loader.js";
 import type { Config } from "../config/schema.js";
 
 export const getConfigSchema = z.object({
@@ -13,64 +12,40 @@ export type GetConfigInput = z.infer<typeof getConfigSchema>;
 
 export interface GetConfigResult {
   config: Config;
-  configPath: string | null;
-  hasCustomConfig: boolean;
-  errors: string[];
-  integrations: {
-    vcs: {
-      configured: boolean;
-      provider: string | null;
-      mcpServer: string | null;
-    };
-    ticketing: {
-      configured: boolean;
-      provider: string | null;
-      mcpServer: string | null;
-    };
-  };
+  source: "mcp-env" | "defaults";
 }
 
 /**
  * Get the current configuration
- * This tool allows the AI to understand the user's commit/PR preferences
  */
-export async function getConfig(input: GetConfigInput): Promise<GetConfigResult> {
-  const repoPath = input.repoPath || process.cwd();
-
-  const { config, configPath, errors } = await loadConfig(repoPath);
+export async function getConfig(
+  _input: GetConfigInput,
+  config: Config
+): Promise<GetConfigResult> {
+  // Check if any env vars were set
+  const hasEnvConfig = !!(
+    process.env.BASE_BRANCH ||
+    process.env.TICKET_PATTERN ||
+    process.env.TICKET_LINK ||
+    process.env.PREFIX_STYLE
+  );
 
   return {
     config,
-    configPath,
-    hasCustomConfig: configPath !== null,
-    errors,
-    integrations: {
-      vcs: {
-        configured: !!config.integrations?.vcs,
-        provider: config.integrations?.vcs?.provider ?? null,
-        mcpServer: config.integrations?.vcs?.mcpServer ?? null,
-      },
-      ticketing: {
-        configured: !!config.integrations?.ticketing,
-        provider: config.integrations?.ticketing?.provider ?? null,
-        mcpServer: config.integrations?.ticketing?.mcpServer ?? null,
-      },
-    },
+    source: hasEnvConfig ? "mcp-env" : "defaults",
   };
 }
 
 export const getConfigTool = {
   name: "get_config",
-  description: `Get the current pr-narrator configuration for the repository.
-Returns the configuration settings that define how commit messages and PR content should be formatted.
-Use this to understand the user's preferences before generating commits or PRs.
+  description: `Get the current pr-narrator configuration.
+Returns settings from MCP env vars or defaults.
 
-Returns:
-- config: The full configuration object
-- configPath: Path to the config file (null if using defaults)
-- hasCustomConfig: Whether a custom config file was found
-- errors: Any configuration errors
-- integrations: Summary of configured integrations (VCS and ticketing)`,
+Set in MCP JSON:
+- BASE_BRANCH: Base branch for PRs (e.g., "develop")
+- TICKET_PATTERN: Ticket regex (e.g., "[A-Z]+-\\d+")
+- TICKET_LINK: Ticket URL template
+- PREFIX_STYLE: "capitalized" or "bracketed"`,
   inputSchema: {
     type: "object" as const,
     properties: {

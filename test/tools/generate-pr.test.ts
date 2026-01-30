@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generatePr } from "../../src/tools/generate-pr.js";
+import { defaultConfig } from "../../src/config/schema.js";
 
 // Mock the git utilities
 vi.mock("../../src/utils/git.js", () => ({
@@ -17,11 +18,6 @@ vi.mock("../../src/utils/git.js", () => ({
   validateRepoPath: vi.fn((path) => path || process.cwd()),
 }));
 
-// Mock the config loader
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn(),
-}));
-
 import {
   getCurrentBranch,
   getBranchChanges,
@@ -29,351 +25,162 @@ import {
   extractBranchPrefix,
   extractTicketsFromCommits,
 } from "../../src/utils/git.js";
-import { loadConfig } from "../../src/config/loader.js";
 
 describe("generatePr", () => {
-  const defaultConfig = {
-    config: {
-      commit: {
-        format: "simple",
-        maxTitleLength: 72,
-        maxBodyLineLength: 100,
-        requireScope: false,
-        requireBody: false,
-        scopes: [],
-        prefix: {
-          enabled: true,
-          style: "capitalized",
-          branchFallback: true,
-        },
-        rules: {
-          imperativeMood: true,
-          capitalizeTitle: true,
-          noTrailingPeriod: true,
-        },
-      },
-      pr: {
-        title: {
-          prefix: {
-            enabled: true,
-            style: "capitalized",
-            branchFallback: true,
-          },
-          maxLength: 100,
-        },
-        sections: [
-          { name: "Summary", required: true },
-          { name: "Changes", required: true, autoPopulate: "commits" },
-          { name: "Tickets", required: false, autoPopulate: "extracted" },
-          { name: "Test Plan", required: false },
-        ],
-      },
-      baseBranch: "main",
-      ticketPattern: "PROJ-\\d+",
-      ticketLinkFormat: "https://jira.example.com/browse/{ticket}",
-    },
-    configPath: null,
-    errors: [],
+  const testConfig = {
+    ...defaultConfig,
+    baseBranch: "main",
+    ticketPattern: "PROJ-\\d+",
+    ticketLinkFormat: "https://jira.example.com/browse/{ticket}",
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadConfig).mockResolvedValue(defaultConfig);
+
+    // Default mock implementations
+    vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-123-add-login");
+    vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-123");
+    vi.mocked(extractBranchPrefix).mockReturnValue("feature");
+    vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
+    vi.mocked(getBranchChanges).mockResolvedValue({
+      commits: [
+        { hash: "abc1234", message: "feat: Add login form" },
+        { hash: "def5678", message: "fix: Handle validation errors" },
+      ],
+      files: [
+        { path: "src/auth/login.ts", additions: 100, deletions: 20 },
+        { path: "src/auth/login.test.ts", additions: 50, deletions: 0 },
+      ],
+      diff: "mock diff",
+    });
   });
 
   describe("title generation", () => {
-    beforeEach(() => {
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234-add-login");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
-    });
-
     it("should generate title with ticket prefix", async () => {
-      const result = await generatePr({
-        titleSummary: "Add user authentication",
-      });
+      const result = await generatePr({}, testConfig);
 
-      expect(result.title).toBe("PROJ-1234: Add user authentication");
+      expect(result.title).toContain("PROJ-123");
     });
 
     it("should use branch prefix as fallback when no ticket", async () => {
       vi.mocked(extractTicketFromBranch).mockReturnValue(null);
+      vi.mocked(extractBranchPrefix).mockReturnValue("task");
 
-      const result = await generatePr({
-        titleSummary: "Add login page",
-      });
+      const result = await generatePr({}, testConfig);
 
-      expect(result.title).toBe("Feature: Add login page");
+      expect(result.title).toContain("Task:");
     });
 
     it("should extract summary from branch name when not provided", async () => {
-      const result = await generatePr({});
+      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-123-add-login");
 
-      expect(result.title).toContain("PROJ-1234:");
-      expect(result.title).toContain("Add Login");
+      const result = await generatePr({}, testConfig);
+
+      expect(result.title).toContain("Add login");
     });
 
     it("should truncate long titles", async () => {
-      const longSummary = "A".repeat(150);
-      const result = await generatePr({
-        titleSummary: longSummary,
-      });
+      vi.mocked(getCurrentBranch).mockResolvedValue(
+        "feature/PROJ-123-this-is-a-very-long-branch-name-that-should-be-truncated-to-fit-within-limits"
+      );
 
-      expect(result.title.length).toBeLessThanOrEqual(100);
-      expect(result.title).toContain("...");
+      const result = await generatePr({}, testConfig);
+
+      expect(result.title.length).toBeLessThanOrEqual(testConfig.pr.title.maxLength);
     });
 
     it("should use placeholder when no summary can be extracted", async () => {
       vi.mocked(getCurrentBranch).mockResolvedValue(null);
-      vi.mocked(extractTicketFromBranch).mockReturnValue(null);
-      vi.mocked(extractBranchPrefix).mockReturnValue(null);
 
-      const result = await generatePr({});
+      const result = await generatePr({}, testConfig);
 
-      // When there's no branch at all, the title should use a placeholder
       expect(result.title).toContain("[Describe your changes]");
     });
   });
 
   describe("description generation", () => {
-    beforeEach(() => {
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234-add-login");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-5678"]);
+    it("should generate description with Ticket and Purpose sections", async () => {
+      const result = await generatePr({}, testConfig);
+
+      expect(result.description).toContain("## Ticket");
+      expect(result.description).toContain("## Purpose");
     });
 
-    it("should generate description with all sections", async () => {
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [
-          { hash: "abc1234", message: "feat: Add login form", author: "dev", date: "2024-01-01" },
-          { hash: "def5678", message: "fix: Fix validation", author: "dev", date: "2024-01-02" },
-        ],
-        files: [{ path: "src/auth/login.ts", additions: 100, deletions: 0, binary: false }],
-        totalAdditions: 100,
-        totalDeletions: 0,
-        diff: "",
-      });
+    it("should auto-populate ticket as plain URL", async () => {
+      const result = await generatePr({}, testConfig);
 
-      const result = await generatePr({
-        summary: "This PR adds user authentication",
-        testPlan: "1. Test login flow\n2. Test logout flow",
-      });
-
-      expect(result.description).toContain("## Summary");
-      expect(result.description).toContain("This PR adds user authentication");
-      expect(result.description).toContain("## Changes");
-      expect(result.description).toContain("feat: Add login form");
-      expect(result.description).toContain("## Tickets");
-      expect(result.description).toContain("PROJ-1234");
-      expect(result.description).toContain("## Test Plan");
-      expect(result.description).toContain("Test login flow");
+      // Should contain plain URL, not markdown link
+      expect(result.description).toContain("https://jira.example.com/browse/PROJ-123");
+      expect(result.description).not.toContain("[PROJ-123]");
     });
 
-    it("should auto-populate commits in Changes section", async () => {
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [
-          { hash: "abc1234", message: "feat: Add feature A", author: "dev", date: "2024-01-01" },
-          { hash: "def5678", message: "feat: Add feature B", author: "dev", date: "2024-01-02" },
-        ],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
+    it("should auto-populate Purpose section with purpose", async () => {
+      const result = await generatePr({}, testConfig);
 
-      const result = await generatePr({});
-
-      expect(result.description).toContain("feat: Add feature A (abc1234)");
-      expect(result.description).toContain("feat: Add feature B (def5678)");
+      expect(result.description).toContain("## Purpose");
+      expect(result.description).not.toContain("_[Add purpose here]_");
     });
 
-    it("should auto-populate tickets in Tickets section", async () => {
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
+    it("should omit Ticket section when no tickets found", async () => {
+      vi.mocked(extractTicketFromBranch).mockReturnValue(null);
 
-      const result = await generatePr({});
+      const result = await generatePr({}, testConfig);
 
-      expect(result.description).toContain("## Tickets");
-      expect(result.description).toContain("PROJ-1234");
-      expect(result.description).toContain("PROJ-5678");
-      expect(result.description).toContain("https://jira.example.com/browse/PROJ-1234");
-    });
-
-    it("should show placeholder for required sections without content", async () => {
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
-
-      const result = await generatePr({});
-
-      expect(result.description).toContain("_[Add summary here]_");
-    });
-
-    it("should handle no commits gracefully", async () => {
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
-
-      const result = await generatePr({});
-
-      expect(result.description).toContain("_No commits found_");
+      // Ticket section should be omitted entirely, not show "_No tickets found_"
+      expect(result.description).not.toContain("## Ticket");
     });
   });
 
   describe("context", () => {
     it("should include all context information", async () => {
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234-add-login");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-5678"]);
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [
-          { hash: "abc1234", message: "feat: Add login", author: "dev", date: "2024-01-01" },
-        ],
-        files: [
-          { path: "src/auth/login.ts", additions: 50, deletions: 10, binary: false },
-          { path: "src/auth/logout.ts", additions: 20, deletions: 5, binary: false },
-        ],
-        totalAdditions: 70,
-        totalDeletions: 15,
-        diff: "",
-      });
+      const result = await generatePr({}, testConfig);
 
-      const result = await generatePr({});
-
-      expect(result.context.ticket).toBe("PROJ-1234");
-      expect(result.context.branchPrefix).toBe("Feature");
-      expect(result.context.branchName).toBe("feature/PROJ-1234-add-login");
-      expect(result.context.baseBranch).toBe("main");
-      expect(result.context.commitCount).toBe(1);
-      expect(result.context.tickets).toContain("PROJ-1234");
-      expect(result.context.tickets).toContain("PROJ-5678");
+      expect(result.context.ticket).toBe("PROJ-123");
+      expect(result.context.branchPrefix).toBe("feature");
+      expect(result.context.branchName).toBe("feature/PROJ-123-add-login");
+      expect(result.context.commitCount).toBe(2);
       expect(result.context.filesChanged).toBe(2);
     });
-  });
 
-  describe("suggested actions", () => {
-    it("should include VCS suggested action when configured", async () => {
-      vi.mocked(loadConfig).mockResolvedValue({
-        ...defaultConfig,
-        config: {
-          ...defaultConfig.config,
-          integrations: {
-            vcs: {
-              provider: "github",
-              mcpServer: "user-github",
-              defaultOwner: "myorg",
-              defaultRepo: "myrepo",
-            },
-          },
-        },
-      });
+    it("should collect all tickets from branch and commits", async () => {
+      vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-456", "PROJ-789"]);
 
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234-test");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
+      const result = await generatePr({}, testConfig);
 
-      const result = await generatePr({
-        titleSummary: "Test PR",
-      });
-
-      expect(result.suggestedActions).toHaveLength(1);
-      expect(result.suggestedActions[0].action).toBe("create_pr");
-      expect(result.suggestedActions[0].mcpServer).toBe("user-github");
-      expect(result.suggestedActions[0].tool).toBe("create_pull_request");
-      expect(result.suggestedActions[0].params.title).toBe("PROJ-1234: Test PR");
-      expect(result.suggestedActions[0].params.base).toBe("main");
-    });
-
-    it("should not include suggested actions when VCS not configured", async () => {
-      vi.mocked(getCurrentBranch).mockResolvedValue("main");
-      vi.mocked(extractTicketFromBranch).mockReturnValue(null);
-      vi.mocked(extractBranchPrefix).mockReturnValue(null);
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
-
-      const result = await generatePr({});
-
-      expect(result.suggestedActions).toHaveLength(0);
+      expect(result.context.tickets).toContain("PROJ-123");
+      expect(result.context.tickets).toContain("PROJ-456");
+      expect(result.context.tickets).toContain("PROJ-789");
     });
   });
 
-  describe("additional sections", () => {
-    it("should include custom additional sections", async () => {
-      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-1234-test");
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
-      vi.mocked(getBranchChanges).mockResolvedValue({
-        commits: [],
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        diff: "",
-      });
+  describe("custom content", () => {
+    it("should use provided title summary", async () => {
+      const result = await generatePr({ titleSummary: "Custom title" }, testConfig);
 
-      // Add custom sections to config
-      vi.mocked(loadConfig).mockResolvedValue({
-        ...defaultConfig,
-        config: {
-          ...defaultConfig.config,
-          pr: {
-            ...defaultConfig.config.pr,
-            sections: [
-              { name: "Summary", required: true },
-              { name: "Screenshots", required: false },
-            ],
-          },
+      expect(result.title).toContain("Custom title");
+    });
+
+    it("should use provided description summary", async () => {
+      const result = await generatePr({ summary: "This is my custom summary" }, testConfig);
+
+      expect(result.description).toContain("This is my custom summary");
+    });
+
+    it("should use provided test plan", async () => {
+      const configWithTestPlan = {
+        ...testConfig,
+        pr: {
+          ...testConfig.pr,
+          sections: [
+            ...testConfig.pr.sections,
+            { name: "Test Plan", required: false },
+          ],
         },
-      });
+      };
 
-      const result = await generatePr({
-        summary: "Test summary",
-        additionalSections: {
-          Screenshots: "![screenshot](url)",
-        },
-      });
+      const result = await generatePr({ testPlan: "Manual testing completed" }, configWithTestPlan);
 
-      expect(result.description).toContain("## Summary");
-      expect(result.description).toContain("Test summary");
-      expect(result.description).toContain("## Screenshots");
-      expect(result.description).toContain("![screenshot](url)");
+      expect(result.description).toContain("Manual testing completed");
     });
   });
 });

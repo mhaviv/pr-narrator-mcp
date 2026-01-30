@@ -10,8 +10,14 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
 
+// Import config
+import { getConfig } from "./config/loader.js";
+
+// Get config from MCP env vars
+const config = getConfig();
+
 // Import all tools
-import { getConfigTool, getConfig, getConfigSchema } from "./tools/get-config.js";
+import { getConfigTool, getConfig as getConfigHandler, getConfigSchema } from "./tools/get-config.js";
 import {
   analyzeGitChangesTool,
   analyzeGitChanges,
@@ -137,7 +143,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "get_config": {
         const input = getConfigSchema.parse(args || {});
-        const result = await getConfig(input);
+        const result = await getConfigHandler(input, config);
         return {
           content: [
             {
@@ -150,7 +156,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "analyze_git_changes": {
         const input = analyzeGitChangesSchema.parse(args || {});
-        const result = await analyzeGitChanges(input);
+        const result = await analyzeGitChanges(input, config);
         return {
           content: [
             {
@@ -163,7 +169,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "generate_commit_message": {
         const input = generateCommitMessageSchema.parse(args || {});
-        const result = await generateCommitMessage(input);
+        const result = await generateCommitMessage(input, config);
         return {
           content: [
             {
@@ -176,7 +182,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "validate_commit_message": {
         const input = validateCommitMessageSchema.parse(args || {});
-        const result = await validateCommitMessage(input);
+        const result = await validateCommitMessage(input, config);
         return {
           content: [
             {
@@ -189,7 +195,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "extract_tickets": {
         const input = extractTicketsSchema.parse(args || {});
-        const result = await extractTickets(input);
+        const result = await extractTickets(input, config);
         return {
           content: [
             {
@@ -202,7 +208,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "generate_pr_title": {
         const input = generatePrTitleSchema.parse(args || {});
-        const result = await generatePrTitle(input);
+        const result = await generatePrTitle(input, config);
         return {
           content: [
             {
@@ -215,7 +221,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "generate_pr_description": {
         const input = generatePrDescriptionSchema.parse(args || {});
-        const result = await generatePrDescription(input);
+        const result = await generatePrDescription(input, config);
         return {
           content: [
             {
@@ -228,7 +234,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "generate_pr": {
         const input = generatePrSchema.parse(args || {});
-        const result = await generatePr(input);
+        const result = await generatePr(input, config);
         return {
           content: [
             {

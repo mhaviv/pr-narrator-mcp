@@ -56,8 +56,11 @@ const prTitleSchema = z
     prefix: z
       .object({
         enabled: z.boolean().default(true),
-        // Format style for PR title prefix: same as commit prefix
-        style: z.enum(["capitalized", "bracketed"]).default("capitalized"),
+        // Format style for PR title prefix:
+        // - "capitalized": "PROJ-123:" or "Task:"
+        // - "bracketed": "[PROJ-123]" or "[Task]"
+        // - "inherit": Use the same style as commit.prefix.style (default)
+        style: z.enum(["capitalized", "bracketed", "inherit"]).default("inherit"),
         branchFallback: z.boolean().default(true),
       })
       .default({}),
@@ -71,7 +74,12 @@ const prTitleSchema = z
 const prSectionSchema = z.object({
   name: z.string(),
   required: z.boolean().default(false),
-  autoPopulate: z.enum(["commits", "extracted", "none"]).optional(),
+  // Auto-populate options:
+  // - "commits": List all commits since base branch
+  // - "extracted": List all tickets found in branch/commits
+  // - "purpose": Generate a summary of changes from diff (files changed, additions/deletions)
+  // - "none": No auto-population (use placeholder if required)
+  autoPopulate: z.enum(["commits", "extracted", "purpose", "none"]).optional(),
 });
 
 /**
@@ -83,10 +91,8 @@ const prSchema = z
     sections: z
       .array(prSectionSchema)
       .default([
-        { name: "Summary", required: true },
-        { name: "Changes", required: true, autoPopulate: "commits" },
-        { name: "Tickets", required: false, autoPopulate: "extracted" },
-        { name: "Test Plan", required: false },
+        { name: "Ticket", required: false, autoPopulate: "extracted" },
+        { name: "Purpose", required: true, autoPopulate: "purpose" },
       ]),
   })
   .default({});
@@ -135,7 +141,8 @@ export const configSchema = z.object({
   pr: prSchema,
   ticketPattern: z.string().optional(),
   ticketLinkFormat: z.string().optional(),
-  baseBranch: z.string().default("main"),
+  // Optional - if not set, auto-detects from repo (main, master, develop, or origin/HEAD)
+  baseBranch: z.string().optional(),
   integrations: integrationsSchema,
 });
 

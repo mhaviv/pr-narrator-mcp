@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadConfig } from "../config/loader.js";
+import type { Config } from "../config/schema.js";
 import {
   getCurrentBranch,
   extractTicketFromBranch,
@@ -46,16 +46,15 @@ export interface ExtractTicketsResult {
  * Extract ticket numbers from branch name, commits, and additional text
  */
 export async function extractTickets(
-  input: ExtractTicketsInput
+  input: ExtractTicketsInput,
+  config: Config
 ): Promise<ExtractTicketsResult> {
   const repoPath = input.repoPath || process.cwd();
   const includeCommits = input.includeCommits ?? true;
 
-  // Load config
-  const { config } = await loadConfig(repoPath);
   const ticketPattern = config.ticketPattern;
   const ticketLinkFormat = config.ticketLinkFormat;
-  
+
   // Auto-detect base branch from repo, fall back to config value
   const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 
@@ -131,15 +130,10 @@ export async function extractTickets(
     }
   }
 
-  // Build unique list
   const uniqueTickets = tickets.map((t) => t.ticket);
-
-  // Build formatted links
   const formattedLinks = tickets.map((t) =>
     formatTicketLink(t.ticket, ticketLinkFormat)
   );
-
-  // Build markdown list
   const markdownList =
     tickets.length > 0
       ? tickets
@@ -162,18 +156,10 @@ export const extractTicketsTool = {
   name: "extract_tickets",
   description: `Extract ticket numbers from the current branch, commits, and optional additional text.
 
-Uses the configured ticketPattern regex to find tickets in:
+Uses TICKET_PATTERN env var to find tickets in:
 1. Branch name (e.g., "feature/PROJ-1234-add-login")
 2. Commit messages since base branch
-3. Additional text provided (e.g., PR title)
-
-Returns:
-- tickets: Array of ticket info with source and link
-- uniqueTickets: List of unique ticket numbers
-- formattedLinks: Tickets formatted as markdown links (if ticketLinkFormat configured)
-- markdownList: Ready-to-use markdown bullet list of tickets
-- branchName: Current branch name
-- hasTickets: Whether any tickets were found`,
+3. Additional text provided`,
   inputSchema: {
     type: "object" as const,
     properties: {

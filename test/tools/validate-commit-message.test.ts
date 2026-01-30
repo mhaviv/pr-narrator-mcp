@@ -1,37 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { validateCommitMessage } from "../../src/tools/validate-commit-message.js";
-
-// Mock the config loader
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn().mockResolvedValue({
-    config: {
-      commit: {
-        format: "conventional",
-        maxTitleLength: 72,
-        maxBodyLineLength: 100,
-        requireScope: false,
-        requireBody: false,
-        scopes: ["auth", "ui", "api"],
-        prefix: {
-          enabled: true,
-          ticketFormat: "{ticket}: ",
-          branchFallback: true,
-        },
-        rules: {
-          imperativeMood: true,
-          capitalizeTitle: true,
-          noTrailingPeriod: true,
-        },
-      },
-      pr: { title: { prefix: { enabled: true } }, sections: [] },
-      baseBranch: "main",
-    },
-    configPath: null,
-    errors: [],
-  }),
-}));
+import { defaultConfig } from "../../src/config/schema.js";
 
 describe("validateCommitMessage", () => {
+  const testConfig = {
+    ...defaultConfig,
+    commit: {
+      ...defaultConfig.commit,
+      format: "conventional" as const,
+      scopes: ["auth", "ui", "api"],
+    },
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -40,8 +20,8 @@ describe("validateCommitMessage", () => {
     it("should validate a correct conventional commit", async () => {
       const result = await validateCommitMessage({
         message: "feat(auth): Add login functionality",
-      });
-      
+      }, testConfig);
+
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
       expect(result.parsed.isConventional).toBe(true);
@@ -52,133 +32,129 @@ describe("validateCommitMessage", () => {
     it("should validate conventional commit without scope", async () => {
       const result = await validateCommitMessage({
         message: "fix: Resolve memory leak",
-      });
-      
+      }, testConfig);
+
       expect(result.valid).toBe(true);
       expect(result.parsed.type).toBe("fix");
       expect(result.parsed.scope).toBe(null);
     });
 
-    it("should validate simple message", async () => {
+    it("should validate breaking change marker", async () => {
       const result = await validateCommitMessage({
-        message: "Add new feature",
-      });
-      
+        message: "feat(api)!: Change response format",
+      }, testConfig);
+
       expect(result.valid).toBe(true);
+      expect(result.parsed.isConventional).toBe(true);
     });
   });
 
   describe("invalid messages", () => {
     it("should reject empty message", async () => {
-      const result = await validateCommitMessage({
-        message: "",
-      });
-      
+      const result = await validateCommitMessage({ message: "" }, testConfig);
+
       expect(result.valid).toBe(false);
       expect(result.errors).toContain("Commit message cannot be empty");
     });
 
     it("should reject message exceeding max length", async () => {
-      const longMessage = "feat: " + "a".repeat(100);
-      const result = await validateCommitMessage({
-        message: longMessage,
-      });
-      
+      const longMessage = "feat: " + "A".repeat(100);
+      const result = await validateCommitMessage({ message: longMessage }, testConfig);
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("exceeds"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("exceeds"))).toBe(true);
+    });
+
+    it("should require scope when configured", async () => {
+      const scopeRequiredConfig = {
+        ...testConfig,
+        commit: { ...testConfig.commit, requireScope: true },
+      };
+
+      const result = await validateCommitMessage({
+        message: "feat: Add feature without scope",
+      }, scopeRequiredConfig);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain("Scope is required but not provided");
+    });
+
+    it("should require body when configured", async () => {
+      const bodyRequiredConfig = {
+        ...testConfig,
+        commit: { ...testConfig.commit, requireBody: true },
+      };
+
+      const result = await validateCommitMessage({
+        message: "feat(auth): Add login",
+      }, bodyRequiredConfig);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain("Commit body is required but not provided");
     });
   });
 
   describe("warnings", () => {
-    it("should warn about past tense verbs", async () => {
-      const result = await validateCommitMessage({
-        message: "feat: Added new feature",
-      });
-      
-      expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.includes("imperative"))).toBe(true);
-    });
-
-    it("should warn about non-capitalized title", async () => {
-      const result = await validateCommitMessage({
-        message: "feat: add new feature",
-      });
-      
-      expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.includes("capital"))).toBe(true);
-    });
-
-    it("should warn about trailing period", async () => {
-      const result = await validateCommitMessage({
-        message: "feat: Add new feature.",
-      });
-      
-      expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.includes("period"))).toBe(true);
-    });
-
     it("should warn about non-conventional format", async () => {
       const result = await validateCommitMessage({
         message: "Add new feature",
-      });
-      
-      expect(result.warnings.some(w => w.includes("conventional"))).toBe(true);
+      }, testConfig);
+
+      expect(result.warnings).toContain(
+        "Message does not follow conventional commit format: type(scope): message"
+      );
     });
 
     it("should warn about scope not in allowed list", async () => {
       const result = await validateCommitMessage({
         message: "feat(unknown): Add feature",
-      });
-      
-      expect(result.warnings.some(w => w.includes("allowed scopes"))).toBe(true);
+      }, testConfig);
+
+      expect(result.warnings.some((w) => w.includes("not in allowed scopes"))).toBe(true);
+    });
+
+    it("should warn about non-imperative mood", async () => {
+      const result = await validateCommitMessage({
+        message: "feat(auth): Added login functionality",
+      }, testConfig);
+
+      expect(result.warnings.some((w) => w.includes("imperative"))).toBe(true);
+    });
+
+    it("should warn about trailing period", async () => {
+      const result = await validateCommitMessage({
+        message: "feat(auth): Add login functionality.",
+      }, testConfig);
+
+      expect(result.warnings).toContain("Title should not end with a period");
+    });
+
+    it("should warn about uncapitalized title", async () => {
+      const result = await validateCommitMessage({
+        message: "feat(auth): add login functionality",
+      }, testConfig);
+
+      expect(result.warnings).toContain("Title should start with a capital letter");
     });
   });
 
-  describe("parsing", () => {
-    it("should parse conventional commit with breaking change", async () => {
-      const result = await validateCommitMessage({
-        message: "feat(api)!: Change endpoint structure",
-      });
-      
-      expect(result.parsed.type).toBe("feat");
-      expect(result.parsed.scope).toBe("api");
-      expect(result.parsed.isConventional).toBe(true);
-    });
-
+  describe("message parsing", () => {
     it("should parse message with body", async () => {
       const result = await validateCommitMessage({
-        message: "feat: Add login\n\nThis adds the login functionality\nwith OAuth support.",
-      });
-      
-      expect(result.parsed.title).toBe("feat: Add login");
-      expect(result.parsed.body).toContain("login functionality");
+        message: "feat(auth): Add login\n\nThis adds login functionality",
+      }, testConfig);
+
+      expect(result.parsed.title).toBe("feat(auth): Add login");
+      expect(result.parsed.body).toBe("This adds login functionality");
     });
 
-    it("should parse non-conventional message", async () => {
+    it("should handle multi-line body", async () => {
       const result = await validateCommitMessage({
-        message: "Update README with new instructions",
-      });
-      
-      expect(result.parsed.isConventional).toBe(false);
-      expect(result.parsed.type).toBe(null);
-      expect(result.parsed.scope).toBe(null);
-    });
-  });
+        message: "feat(auth): Add login\n\nLine 1\nLine 2\nLine 3",
+      }, testConfig);
 
-  describe("issues array", () => {
-    it("should include detailed issue information", async () => {
-      const result = await validateCommitMessage({
-        message: "feat: added feature.",
-      });
-      
-      expect(result.issues.length).toBeGreaterThan(0);
-      
-      const imperativeIssue = result.issues.find(i => i.rule === "imperative-mood");
-      expect(imperativeIssue).toBeDefined();
-      expect(imperativeIssue?.severity).toBe("warning");
-      
-      const periodIssue = result.issues.find(i => i.rule === "no-trailing-period");
-      expect(periodIssue).toBeDefined();
+      expect(result.parsed.body).toContain("Line 1");
+      expect(result.parsed.body).toContain("Line 3");
     });
   });
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadConfig } from "../config/loader.js";
+import type { Config } from "../config/schema.js";
 import {
   getCurrentBranch,
   extractTicketFromBranch,
@@ -40,13 +40,11 @@ export interface GeneratePrTitleResult {
  * Generate a PR title based on branch info and config
  */
 export async function generatePrTitle(
-  input: GeneratePrTitleInput
+  input: GeneratePrTitleInput,
+  config: Config
 ): Promise<GeneratePrTitleResult> {
   const repoPath = input.repoPath || process.cwd();
   const providedSummary = input.summary || "";
-
-  // Load config
-  const { config } = await loadConfig(repoPath);
   const prTitleConfig = config.pr.title;
 
   // Get branch info
@@ -56,14 +54,20 @@ export async function generatePrTitle(
     : null;
   const branchPrefix = branchName ? extractBranchPrefix(branchName) : null;
 
+  // Resolve prefix style - "inherit" means use the commit prefix style
+  const resolvedPrefixConfig = {
+    ...prTitleConfig.prefix,
+    style: prTitleConfig.prefix.style === "inherit"
+      ? config.commit.prefix.style
+      : prTitleConfig.prefix.style,
+  };
+
   // Generate prefix
-  const prefix = formatPrefix(prTitleConfig.prefix, ticket, branchPrefix);
+  const prefix = formatPrefix(resolvedPrefixConfig, ticket, branchPrefix);
 
   // Build summary - use provided or placeholder
   let summary = providedSummary;
   if (!summary && branchName) {
-    // Try to extract summary from branch name
-    // Remove ticket and prefix, convert kebab-case to Title Case
     let branchSummary = branchName;
 
     // Remove common prefixes
@@ -82,11 +86,16 @@ export async function generatePrTitle(
       }
     }
 
-    // Convert kebab-case/snake_case to Title Case
+    // Convert kebab-case/snake_case to sentence case
     summary = branchSummary
       .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/\s+/g, " ")
       .trim();
+
+    // Capitalize only the first letter
+    if (summary.length > 0) {
+      summary = summary.charAt(0).toUpperCase() + summary.slice(1);
+    }
   }
 
   if (!summary) {
@@ -123,22 +132,13 @@ export async function generatePrTitle(
 
 export const generatePrTitleTool = {
   name: "generate_pr_title",
-  description: `Generate a PR title based on branch info and user configuration.
+  description: `Generate a PR title based on branch info.
 
 Prefix behavior:
-- If a ticket is found in the branch name, uses ticket as prefix
+- If ticket found in branch name, uses ticket as prefix
 - If no ticket but branch has prefix (task/, bug/, etc.), uses that
-- Prefix format is configurable (e.g., "[{ticket}] " or "{ticket}: ")
 
-If no summary is provided, attempts to extract one from the branch name
-by converting kebab-case to Title Case.
-
-Returns:
-- title: The complete PR title
-- prefix: The prefix portion
-- summary: The summary portion
-- context: Ticket, branch prefix, and branch name used
-- validation: Whether title is within max length`,
+If no summary is provided, extracts one from the branch name.`,
   inputSchema: {
     type: "object" as const,
     properties: {

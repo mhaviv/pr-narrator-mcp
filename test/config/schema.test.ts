@@ -12,14 +12,16 @@ describe("configSchema", () => {
       expect(defaultConfig.commit.rules.imperativeMood).toBe(true);
       expect(defaultConfig.commit.rules.capitalizeTitle).toBe(true);
       expect(defaultConfig.commit.rules.noTrailingPeriod).toBe(true);
-      expect(defaultConfig.baseBranch).toBe("main");
+      // baseBranch is undefined by default - auto-detected from repo at runtime
+      expect(defaultConfig.baseBranch).toBeUndefined();
     });
 
     it("should have default PR sections", () => {
-      expect(defaultConfig.pr.sections).toHaveLength(4);
-      expect(defaultConfig.pr.sections[0].name).toBe("Summary");
-      expect(defaultConfig.pr.sections[1].name).toBe("Changes");
-      expect(defaultConfig.pr.sections[1].autoPopulate).toBe("commits");
+      expect(defaultConfig.pr.sections).toHaveLength(2);
+      expect(defaultConfig.pr.sections[0].name).toBe("Ticket");
+      expect(defaultConfig.pr.sections[0].autoPopulate).toBe("extracted");
+      expect(defaultConfig.pr.sections[1].name).toBe("Purpose");
+      expect(defaultConfig.pr.sections[1].autoPopulate).toBe("purpose");
     });
   });
 

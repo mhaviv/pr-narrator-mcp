@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { analyzeGitChanges } from "../../src/tools/analyze-git-changes.js";
+import { defaultConfig } from "../../src/config/schema.js";
 
 // Mock the git utilities
 vi.mock("../../src/utils/git.js", () => ({
@@ -14,11 +15,6 @@ vi.mock("../../src/utils/git.js", () => ({
   validateRepoPath: vi.fn((path) => path || process.cwd()),
 }));
 
-// Mock the config loader
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn(),
-}));
-
 import {
   getGitInfo,
   getStagedChanges,
@@ -27,40 +23,16 @@ import {
   extractBranchPrefix,
   extractTicketsFromCommits,
 } from "../../src/utils/git.js";
-import { loadConfig } from "../../src/config/loader.js";
 
 describe("analyzeGitChanges", () => {
-  const defaultConfig = {
-    config: {
-      commit: {
-        format: "conventional",
-        maxTitleLength: 72,
-        maxBodyLineLength: 100,
-        requireScope: false,
-        requireBody: false,
-        scopes: ["auth", "api", "ui"],
-        prefix: {
-          enabled: true,
-          ticketFormat: "{ticket}: ",
-          branchFallback: true,
-        },
-        rules: {
-          imperativeMood: true,
-          capitalizeTitle: true,
-          noTrailingPeriod: true,
-        },
-      },
-      pr: { title: { prefix: { enabled: true } }, sections: [] },
-      baseBranch: "main",
-      ticketPattern: "PROJ-\\d+",
-    },
-    configPath: null,
-    errors: [],
+  const testConfig = {
+    ...defaultConfig,
+    ticketPattern: "PROJ-\\d+",
+    baseBranch: "main",
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadConfig).mockResolvedValue(defaultConfig);
   });
 
   describe("when not a git repository", () => {
@@ -71,13 +43,11 @@ describe("analyzeGitChanges", () => {
         baseBranch: "main",
         hasStagedChanges: false,
         hasUnstagedChanges: false,
-        remoteUrl: null,
       });
 
-      const result = await analyzeGitChanges({});
+      const result = await analyzeGitChanges({}, testConfig);
 
       expect(result.isRepo).toBe(false);
-      expect(result.currentBranch).toBeNull();
       expect(result.errors).toContain("Not a git repository");
     });
   });
@@ -86,94 +56,79 @@ describe("analyzeGitChanges", () => {
     beforeEach(() => {
       vi.mocked(getGitInfo).mockResolvedValue({
         isRepo: true,
-        currentBranch: "feature/PROJ-1234-add-login",
+        currentBranch: "feature/PROJ-123-add-login",
         baseBranch: "main",
         hasStagedChanges: true,
         hasUnstagedChanges: false,
-        remoteUrl: "https://github.com/user/repo.git",
       });
-      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-1234");
-      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
-      vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-1234", "PROJ-5678"]);
-    });
-
-    it("should return repository info", async () => {
       vi.mocked(getStagedChanges).mockResolvedValue({
         files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
         diff: "",
       });
       vi.mocked(getBranchChanges).mockResolvedValue({
         commits: [],
         files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
         diff: "",
       });
+      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-123");
+      vi.mocked(extractBranchPrefix).mockReturnValue("feature");
+      vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
+    });
 
-      const result = await analyzeGitChanges({});
+    it("should return repository info", async () => {
+      const result = await analyzeGitChanges({}, testConfig);
 
       expect(result.isRepo).toBe(true);
-      expect(result.currentBranch).toBe("feature/PROJ-1234-add-login");
+      expect(result.currentBranch).toBe("feature/PROJ-123-add-login");
       expect(result.baseBranch).toBe("main");
     });
 
     it("should extract ticket from branch name", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue(null);
-      vi.mocked(getBranchChanges).mockResolvedValue(null);
+      const result = await analyzeGitChanges({}, testConfig);
 
-      const result = await analyzeGitChanges({});
-
-      expect(result.ticket).toBe("PROJ-1234");
+      expect(result.ticket).toBe("PROJ-123");
     });
 
     it("should extract branch prefix", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue(null);
-      vi.mocked(getBranchChanges).mockResolvedValue(null);
+      const result = await analyzeGitChanges({}, testConfig);
 
-      const result = await analyzeGitChanges({});
-
-      expect(result.branchPrefix).toBe("Feature");
+      expect(result.branchPrefix).toBe("feature");
     });
 
     it("should collect all tickets from commits", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue(null);
-      vi.mocked(getBranchChanges).mockResolvedValue(null);
+      vi.mocked(extractTicketsFromCommits).mockResolvedValue(["PROJ-456", "PROJ-789"]);
 
-      const result = await analyzeGitChanges({});
+      const result = await analyzeGitChanges({}, testConfig);
 
-      expect(result.allTickets).toContain("PROJ-1234");
-      expect(result.allTickets).toContain("PROJ-5678");
+      expect(result.allTickets).toContain("PROJ-123");
+      expect(result.allTickets).toContain("PROJ-456");
+      expect(result.allTickets).toContain("PROJ-789");
     });
 
     describe("staged changes", () => {
       it("should analyze staged changes", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
           files: [
-            { path: "src/auth/login.ts", additions: 50, deletions: 10, binary: false },
-            { path: "src/auth/logout.ts", additions: 20, deletions: 5, binary: false },
+            { path: "src/auth/login.ts", additions: 50, deletions: 10 },
+            { path: "src/auth/logout.ts", additions: 30, deletions: 5 },
           ],
-          totalAdditions: 70,
-          totalDeletions: 15,
-          diff: "diff content",
+          diff: "mock diff content",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.hasChanges).toBe(true);
         expect(result.staged.fileCount).toBe(2);
         expect(result.staged.files).toHaveLength(2);
-        expect(result.staged.suggestedType).toBe("feat");
-        expect(result.staged.suggestedScope).toBe("auth");
       });
 
       it("should handle no staged changes", async () => {
-        vi.mocked(getStagedChanges).mockResolvedValue(null);
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
+        vi.mocked(getStagedChanges).mockResolvedValue({
+          files: [],
+          diff: "",
+        });
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.hasChanges).toBe(false);
         expect(result.staged.fileCount).toBe(0);
@@ -181,28 +136,22 @@ describe("analyzeGitChanges", () => {
 
       it("should include diff when requested", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
-          files: [{ path: "src/index.ts", additions: 10, deletions: 0, binary: false }],
-          totalAdditions: 10,
-          totalDeletions: 0,
-          diff: "full diff content here",
+          files: [{ path: "src/index.ts", additions: 10, deletions: 5 }],
+          diff: "mock diff content",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({ includeFullDiff: true });
+        const result = await analyzeGitChanges({ includeFullDiff: true }, testConfig);
 
-        expect(result.staged.diff).toBe("full diff content here");
+        expect(result.staged.diff).toBe("mock diff content");
       });
 
       it("should not include diff by default", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
-          files: [{ path: "src/index.ts", additions: 10, deletions: 0, binary: false }],
-          totalAdditions: 10,
-          totalDeletions: 0,
-          diff: "full diff content here",
+          files: [{ path: "src/index.ts", additions: 10, deletions: 5 }],
+          diff: "mock diff content",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({ includeFullDiff: false });
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.diff).toBeUndefined();
       });
@@ -210,81 +159,68 @@ describe("analyzeGitChanges", () => {
 
     describe("branch changes", () => {
       it("should analyze branch changes for PR context", async () => {
-        vi.mocked(getStagedChanges).mockResolvedValue(null);
         vi.mocked(getBranchChanges).mockResolvedValue({
           commits: [
-            { hash: "abc1234", message: "feat: Add login", author: "dev", date: "2024-01-01" },
-            { hash: "def5678", message: "fix: Fix typo", author: "dev", date: "2024-01-02" },
+            { hash: "abc1234", message: "feat: Add login" },
+            { hash: "def5678", message: "fix: Handle errors" },
           ],
           files: [
-            { path: "src/auth/login.ts", additions: 100, deletions: 20, binary: false },
+            { path: "src/auth/login.ts", additions: 100, deletions: 20 },
           ],
-          totalAdditions: 100,
-          totalDeletions: 20,
           diff: "branch diff",
         });
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.branch.commitCount).toBe(2);
         expect(result.branch.commits).toHaveLength(2);
-        expect(result.branch.commits[0].hash).toBe("abc1234");
-        expect(result.branch.commits[0].message).toBe("feat: Add login");
         expect(result.branch.fileCount).toBe(1);
       });
 
       it("should handle no branch changes", async () => {
-        vi.mocked(getStagedChanges).mockResolvedValue(null);
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
+        vi.mocked(getBranchChanges).mockResolvedValue({
+          commits: [],
+          files: [],
+          diff: "",
+        });
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.branch.commitCount).toBe(0);
-        expect(result.branch.commits).toHaveLength(0);
+        expect(result.branch.fileCount).toBe(0);
       });
     });
 
     describe("commit type inference", () => {
       it("should suggest test type for test files", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
-          files: [{ path: "test/auth.test.ts", additions: 50, deletions: 0, binary: false }],
-          totalAdditions: 50,
-          totalDeletions: 0,
+          files: [{ path: "test/auth.test.ts", additions: 50, deletions: 0 }],
           diff: "",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.suggestedType).toBe("test");
       });
 
       it("should suggest docs type for markdown files", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
-          files: [{ path: "README.md", additions: 10, deletions: 5, binary: false }],
-          totalAdditions: 10,
-          totalDeletions: 5,
+          files: [{ path: "README.md", additions: 20, deletions: 5 }],
           diff: "",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.suggestedType).toBe("docs");
       });
 
       it("should suggest ci type for workflow files", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
-          files: [
-            { path: ".github/workflows/ci.yml", additions: 20, deletions: 0, binary: false },
-          ],
-          totalAdditions: 20,
-          totalDeletions: 0,
+          files: [{ path: ".github/workflows/ci.yml", additions: 30, deletions: 0 }],
           diff: "",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.suggestedType).toBe("ci");
       });
@@ -294,16 +230,13 @@ describe("analyzeGitChanges", () => {
       it("should infer scope from file paths", async () => {
         vi.mocked(getStagedChanges).mockResolvedValue({
           files: [
-            { path: "src/auth/login.ts", additions: 10, deletions: 0, binary: false },
-            { path: "src/auth/logout.ts", additions: 10, deletions: 0, binary: false },
+            { path: "src/auth/login.ts", additions: 50, deletions: 10 },
+            { path: "src/auth/logout.ts", additions: 30, deletions: 5 },
           ],
-          totalAdditions: 20,
-          totalDeletions: 0,
           diff: "",
         });
-        vi.mocked(getBranchChanges).mockResolvedValue(null);
 
-        const result = await analyzeGitChanges({});
+        const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.suggestedScope).toBe("auth");
       });

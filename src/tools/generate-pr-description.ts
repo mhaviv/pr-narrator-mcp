@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { loadConfig } from "../config/loader.js";
-import type { PrSection } from "../config/schema.js";
+import type { Config, PrSection } from "../config/schema.js";
 import {
   getCurrentBranch,
   getBranchChanges,
   extractTicketFromBranch,
   extractTicketsFromCommits,
+  getDefaultBranch,
 } from "../utils/git.js";
-import { formatTicketLink } from "../utils/formatters.js";
+import { formatTicketLink, generatePurposeSummary } from "../utils/formatters.js";
 
 export const generatePrDescriptionSchema = z.object({
   repoPath: z
@@ -46,29 +46,21 @@ export interface GeneratePrDescriptionResult {
     commitCount: number;
     tickets: string[];
   };
-  suggestedActions: Array<{
-    action: string;
-    mcpServer: string | null;
-    tool: string;
-    params: Record<string, unknown>;
-  }>;
 }
 
-/**
- * Generate content for a PR section
- */
 async function generateSectionContent(
   section: PrSection,
   context: {
     commits: Array<{ hash: string; message: string }>;
+    files: Array<{ path: string; additions: number; deletions: number }>;
     tickets: string[];
     ticketLinkFormat: string | undefined;
     providedContent: Record<string, string | undefined>;
+    branchName: string | null;
   }
 ): Promise<string> {
   const sectionNameLower = section.name.toLowerCase();
 
-  // Check if content was provided
   if (context.providedContent[section.name]) {
     return context.providedContent[section.name]!;
   }
@@ -76,7 +68,6 @@ async function generateSectionContent(
     return context.providedContent[sectionNameLower]!;
   }
 
-  // Auto-populate if configured
   if (section.autoPopulate === "commits") {
     if (context.commits.length === 0) {
       return "_No commits found_";
@@ -95,7 +86,10 @@ async function generateSectionContent(
       .join("\n");
   }
 
-  // Return placeholder for required sections, empty for optional
+  if (section.autoPopulate === "purpose") {
+    return generatePurposeSummary(context.commits, context.files, context.branchName);
+  }
+
   if (section.required) {
     return `_[Add ${section.name.toLowerCase()} here]_`;
   }
@@ -104,17 +98,17 @@ async function generateSectionContent(
 }
 
 /**
- * Generate a PR description based on branch changes and config
+ * Generate a PR description based on branch changes
  */
 export async function generatePrDescription(
-  input: GeneratePrDescriptionInput
+  input: GeneratePrDescriptionInput,
+  config: Config
 ): Promise<GeneratePrDescriptionResult> {
   const repoPath = input.repoPath || process.cwd();
-
-  // Load config
-  const { config } = await loadConfig(repoPath);
   const prConfig = config.pr;
-  const baseBranch = config.baseBranch;
+
+  // Auto-detect base branch from repo, fall back to config value
+  const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 
   // Get branch info
   const branchName = await getCurrentBranch(repoPath);
@@ -124,7 +118,6 @@ export async function generatePrDescription(
   const tickets: string[] = [];
   const seenTickets = new Set<string>();
 
-  // From branch
   if (branchName && config.ticketPattern) {
     const branchTicket = extractTicketFromBranch(branchName, config.ticketPattern);
     if (branchTicket) {
@@ -136,7 +129,6 @@ export async function generatePrDescription(
     }
   }
 
-  // From commits
   if (config.ticketPattern) {
     const commitTickets = await extractTicketsFromCommits(
       repoPath,
@@ -152,7 +144,6 @@ export async function generatePrDescription(
     }
   }
 
-  // Build provided content map
   const providedContent: Record<string, string | undefined> = {
     summary: input.summary,
     Summary: input.summary,
@@ -161,19 +152,20 @@ export async function generatePrDescription(
     ...input.additionalSections,
   };
 
-  // Generate sections
   const commits = branchChanges?.commits ?? [];
+  const files = branchChanges?.files ?? [];
   const sections: GeneratedSection[] = [];
 
   for (const sectionConfig of prConfig.sections) {
     const content = await generateSectionContent(sectionConfig, {
       commits,
+      files,
       tickets,
       ticketLinkFormat: config.ticketLinkFormat,
       providedContent,
+      branchName,
     });
 
-    // Skip empty optional sections
     if (!content && !sectionConfig.required) {
       continue;
     }
@@ -186,9 +178,7 @@ export async function generatePrDescription(
     });
   }
 
-  // Build markdown description
   const descriptionParts: string[] = [];
-
   for (const section of sections) {
     if (section.content) {
       descriptionParts.push(`## ${section.name}\n\n${section.content}`);
@@ -196,26 +186,6 @@ export async function generatePrDescription(
   }
 
   const description = descriptionParts.join("\n\n");
-
-  // Build suggested actions if VCS integration is configured
-  const suggestedActions: Array<{
-    action: string;
-    mcpServer: string | null;
-    tool: string;
-    params: Record<string, unknown>;
-  }> = [];
-
-  if (config.integrations?.vcs) {
-    suggestedActions.push({
-      action: "create_pr",
-      mcpServer: config.integrations.vcs.mcpServer,
-      tool: "create_pull_request",
-      params: {
-        body: description,
-        base: baseBranch,
-      },
-    });
-  }
 
   return {
     description,
@@ -226,31 +196,17 @@ export async function generatePrDescription(
       commitCount: commits.length,
       tickets,
     },
-    suggestedActions,
   };
 }
 
 export const generatePrDescriptionTool = {
   name: "generate_pr_description",
-  description: `Generate a PR description with configured sections.
+  description: `Generate a PR description with sections.
 
-Sections are defined in the config and can include:
-- Summary (required/optional)
-- Changes (auto-populated from commits)
-- Tickets (auto-populated from branch/commits)
-- Test Plan
-- Screenshots
-- Any custom sections
-
-Auto-population:
+Auto-populates:
+- "purpose": Summary from commits, files, and branch name
 - "commits": Lists all commits since base branch
-- "extracted": Lists all tickets found in branch name and commits
-
-Returns:
-- description: Complete markdown description
-- sections: Array of generated sections with content
-- context: Branch name, base branch, commit count, tickets
-- suggestedActions: Actions for VCS integration (if configured)`,
+- "extracted": Lists all tickets found`,
   inputSchema: {
     type: "object" as const,
     properties: {

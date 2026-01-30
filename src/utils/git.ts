@@ -202,8 +202,8 @@ export async function detectBaseBranch(
   repoPath: string,
   configuredBranch?: string
 ): Promise<BaseBranchResult> {
-  // If user configured a branch, use it - no ambiguity
-  if (configuredBranch && configuredBranch !== "main") {
+  // If user explicitly configured a branch, use it - no ambiguity
+  if (configuredBranch) {
     return {
       branch: configuredBranch,
       isConfigured: true,

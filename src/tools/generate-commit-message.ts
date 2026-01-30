@@ -5,7 +5,7 @@ import {
   extractTicketFromBranch,
   extractBranchPrefix,
 } from "../utils/git.js";
-import { loadConfig } from "../config/loader.js";
+import type { Config } from "../config/schema.js";
 import {
   formatPrefix,
   checkImperativeMood,
@@ -48,13 +48,9 @@ export type GenerateCommitMessageInput = z.infer<typeof generateCommitMessageSch
 
 export interface GenerateCommitMessageResult {
   success: boolean;
-
-  // Generated message parts
   title: string;
   body: string | null;
   fullMessage: string;
-
-  // Context used
   context: {
     ticket: string | null;
     branchPrefix: string | null;
@@ -62,21 +58,15 @@ export interface GenerateCommitMessageResult {
     scope: string | null;
     prefix: string;
   };
-
-  // Change summary
   changes: {
     fileCount: number;
     files: string[];
     summary: string;
   };
-
-  // Validation
   validation: {
     valid: boolean;
     warnings: string[];
   };
-
-  // Errors
   errors: string[];
 }
 
@@ -84,14 +74,12 @@ export interface GenerateCommitMessageResult {
  * Generate a commit message based on staged changes and config
  */
 export async function generateCommitMessage(
-  input: GenerateCommitMessageInput
+  input: GenerateCommitMessageInput,
+  config: Config
 ): Promise<GenerateCommitMessageResult> {
   const repoPath = input.repoPath || process.cwd();
   const errors: string[] = [];
   const warnings: string[] = [];
-
-  // Load config
-  const { config } = await loadConfig(repoPath);
   const commitConfig = config.commit;
 
   // Get staged changes
@@ -185,16 +173,13 @@ export async function generateCommitMessage(
   let title: string;
 
   if (commitConfig.format === "simple") {
-    // Simple: just prefix + message (no conventional commit type)
     title = prefix + summary;
   } else if (commitConfig.format === "conventional" || commitConfig.format === "angular") {
-    // Conventional/Angular: prefix + type(scope): message
     const typeFormat = commitConfig.typeFormat || "capitalized";
     const includeScope = commitConfig.includeScope ?? false;
     const typePart = formatCommitType(type, typeFormat, scope, includeScope);
     title = prefix + typePart + summary;
   } else {
-    // Default to simple
     title = prefix + summary;
   }
 
@@ -221,10 +206,7 @@ export async function generateCommitMessage(
     body = bodyLines.join("\n");
   }
 
-  // Full message
   const fullMessage = body ? `${title}\n${body}` : title;
-
-  // Validate
   const valid = errors.length === 0;
 
   return {
@@ -254,36 +236,17 @@ export async function generateCommitMessage(
 
 export const generateCommitMessageTool = {
   name: "generate_commit_message",
-  description: `Generate a commit message based on staged changes and user configuration.
+  description: `Generate a commit message based on staged changes.
 
-Prefix behavior (default format is "simple"):
+Prefix behavior:
 - No prefix on main/master/develop branches
-- If a ticket is found in branch (e.g., feature/PROJ-123-foo): "PROJ-123: message"
+- If ticket found in branch (e.g., feature/PROJ-123-foo): "PROJ-123: message"
 - If no ticket but branch type (e.g., task/do-something): "Task: message"
-- Prefix style configurable: "capitalized" (Task:) or "bracketed" ([Task])
 
 Examples:
 - Branch "feature/PROJ-123-add-auth" → "PROJ-123: Add user authentication"
 - Branch "task/update-readme" → "Task: Update readme"
-- Branch "bug/fix-login" → "Bug: Fix login issue"
-- Branch "main" → "Update readme" (no prefix)
-
-For conventional commits format, set commit.format: "conventional" in config.
-
-Parameters:
-- repoPath: Path to the git repository
-- summary: Optional summary (if you've already analyzed the diff)
-- type: Optional type override (feat, fix, etc.) - only for conventional format
-- scope: Optional scope override - only for conventional format
-- includeBody: Whether to include a commit body
-
-Returns:
-- title: The commit message title
-- body: Optional commit body
-- fullMessage: Complete commit message
-- context: Ticket, branch prefix used
-- changes: Summary of staged changes
-- validation: Whether message passes all rules, with warnings`,
+- Branch "main" → "Update readme" (no prefix)`,
   inputSchema: {
     type: "object" as const,
     properties: {

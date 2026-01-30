@@ -3,13 +3,12 @@ import {
   getGitInfo,
   getStagedChanges,
   getBranchChanges,
-  getCurrentBranch,
   extractTicketFromBranch,
   extractBranchPrefix,
   extractTicketsFromCommits,
   getDefaultBranch,
 } from "../utils/git.js";
-import { loadConfig } from "../config/loader.js";
+import type { Config } from "../config/schema.js";
 import {
   inferCommitType,
   inferScope,
@@ -78,18 +77,15 @@ export interface AnalyzeGitChangesResult {
 
 /**
  * Analyze git changes in the repository
- * Provides context for generating commit messages and PR content
  */
 export async function analyzeGitChanges(
-  input: AnalyzeGitChangesInput
+  input: AnalyzeGitChangesInput,
+  config: Config
 ): Promise<AnalyzeGitChangesResult> {
   const repoPath = input.repoPath || process.cwd();
   const includeFullDiff = input.includeFullDiff ?? false;
   const errors: string[] = [];
 
-  // Load config to get ticket pattern and base branch
-  const { config } = await loadConfig(repoPath);
-  
   // Auto-detect base branch from repo, fall back to config value
   const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 

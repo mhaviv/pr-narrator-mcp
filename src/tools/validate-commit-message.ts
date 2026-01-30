@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadConfig } from "../config/loader.js";
+import type { Config } from "../config/schema.js";
 import {
   checkImperativeMood,
   isCapitalized,
@@ -39,12 +39,8 @@ export interface ValidateCommitMessageResult {
   };
 }
 
-// Conventional commit regex: type(scope)?: message
 const CONVENTIONAL_COMMIT_REGEX = /^(\w+)(?:\(([^)]+)\))?(!)?:\s*(.+)$/;
 
-/**
- * Parse a commit message into its components
- */
 function parseCommitMessage(message: string): {
   title: string;
   body: string | null;
@@ -84,9 +80,9 @@ function parseCommitMessage(message: string): {
  * Validate a commit message against configuration rules
  */
 export async function validateCommitMessage(
-  input: ValidateCommitMessageInput
+  input: ValidateCommitMessageInput,
+  config: Config
 ): Promise<ValidateCommitMessageResult> {
-  const repoPath = input.repoPath || process.cwd();
   const message = input.message.trim();
 
   const issues: ValidationIssue[] = [];
@@ -94,15 +90,10 @@ export async function validateCommitMessage(
   const warnings: string[] = [];
   const suggestions: string[] = [];
 
-  // Load config
-  const { config } = await loadConfig(repoPath);
   const commitConfig = config.commit;
   const rules = commitConfig.rules;
-
-  // Parse the message
   const parsed = parseCommitMessage(message);
 
-  // Check if message is empty
   if (!message) {
     issues.push({
       rule: "non-empty",
@@ -112,7 +103,6 @@ export async function validateCommitMessage(
     errors.push("Commit message cannot be empty");
   }
 
-  // Check title length
   if (parsed.title.length > commitConfig.maxTitleLength) {
     issues.push({
       rule: "max-title-length",
@@ -124,7 +114,6 @@ export async function validateCommitMessage(
     );
   }
 
-  // Check conventional commit format if required
   if (commitConfig.format === "conventional" && !parsed.isConventional) {
     issues.push({
       rule: "conventional-format",
@@ -139,7 +128,6 @@ export async function validateCommitMessage(
     );
   }
 
-  // Check scope requirement
   if (commitConfig.requireScope && parsed.isConventional && !parsed.scope) {
     issues.push({
       rule: "require-scope",
@@ -149,7 +137,6 @@ export async function validateCommitMessage(
     errors.push("Scope is required but not provided");
   }
 
-  // Check if scope is in allowed list
   if (
     parsed.scope &&
     commitConfig.scopes &&
@@ -166,7 +153,6 @@ export async function validateCommitMessage(
     );
   }
 
-  // Check body requirement
   if (commitConfig.requireBody && !parsed.body) {
     issues.push({
       rule: "require-body",
@@ -176,12 +162,10 @@ export async function validateCommitMessage(
     errors.push("Commit body is required but not provided");
   }
 
-  // Extract the actual message part for rule checks
   const messageContent = parsed.isConventional
     ? parsed.title.replace(CONVENTIONAL_COMMIT_REGEX, "$4")
     : parsed.title;
 
-  // Check imperative mood
   if (rules.imperativeMood && messageContent) {
     const moodCheck = checkImperativeMood(messageContent);
     if (!moodCheck.isImperative && moodCheck.suggestion) {
@@ -196,7 +180,6 @@ export async function validateCommitMessage(
     }
   }
 
-  // Check capitalization
   if (rules.capitalizeTitle && messageContent && !isCapitalized(messageContent)) {
     issues.push({
       rule: "capitalize-title",
@@ -206,7 +189,6 @@ export async function validateCommitMessage(
     warnings.push("Title should start with a capital letter");
   }
 
-  // Check trailing period
   if (rules.noTrailingPeriod && parsed.title.endsWith(".")) {
     issues.push({
       rule: "no-trailing-period",
@@ -216,7 +198,6 @@ export async function validateCommitMessage(
     warnings.push("Title should not end with a period");
   }
 
-  // Determine overall validity (only errors make it invalid)
   const valid = errors.length === 0;
 
   return {
@@ -238,25 +219,15 @@ export async function validateCommitMessage(
 
 export const validateCommitMessageTool = {
   name: "validate_commit_message",
-  description: `Validate a commit message against the user's configured rules.
+  description: `Validate a commit message against configured rules.
 
 Checks:
 - Title length (max characters)
 - Conventional commit format (if configured)
 - Required scope (if configured)
-- Allowed scopes (if configured)
-- Required body (if configured)
 - Imperative mood (e.g., "Add" not "Added")
 - Title capitalization
-- No trailing period
-
-Returns:
-- valid: Whether the message passes all error-level rules
-- issues: Detailed list of all issues found
-- errors: List of error messages (make the commit invalid)
-- warnings: List of warning messages (advisory)
-- suggestions: Helpful suggestions for improvement
-- parsed: Parsed components (title, body, type, scope)`,
+- No trailing period`,
   inputSchema: {
     type: "object" as const,
     properties: {
