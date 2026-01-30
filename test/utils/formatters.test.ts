@@ -17,7 +17,7 @@ describe("formatters", () => {
   describe("formatPrefix", () => {
     const defaultPrefixConfig = {
       enabled: true,
-      ticketFormat: "{ticket}: ",
+      style: "capitalized" as const,
       branchFallback: true,
     };
 
@@ -30,8 +30,8 @@ describe("formatters", () => {
       expect(formatPrefix(defaultPrefixConfig, "JIRA-123", null)).toBe("JIRA-123: ");
     });
 
-    it("should use branch prefix as fallback", () => {
-      expect(formatPrefix(defaultPrefixConfig, null, "Task")).toBe("Task: ");
+    it("should use branch prefix as fallback and capitalize it", () => {
+      expect(formatPrefix(defaultPrefixConfig, null, "task")).toBe("Task: ");
     });
 
     it("should return empty when no ticket and no branch prefix", () => {
@@ -40,12 +40,17 @@ describe("formatters", () => {
 
     it("should not use branch fallback when disabled", () => {
       const config = { ...defaultPrefixConfig, branchFallback: false };
-      expect(formatPrefix(config, null, "Task")).toBe("");
+      expect(formatPrefix(config, null, "task")).toBe("");
     });
 
-    it("should respect custom ticket format", () => {
-      const config = { ...defaultPrefixConfig, ticketFormat: "[{ticket}] " };
+    it("should use bracketed style when configured", () => {
+      const config = { ...defaultPrefixConfig, style: "bracketed" as const };
       expect(formatPrefix(config, "JIRA-123", null)).toBe("[JIRA-123] ");
+    });
+
+    it("should use bracketed style for branch prefix", () => {
+      const config = { ...defaultPrefixConfig, style: "bracketed" as const };
+      expect(formatPrefix(config, null, "task")).toBe("[Task] ");
     });
   });
 

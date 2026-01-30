@@ -4,9 +4,10 @@ import { configSchema, defaultConfig } from "../../src/config/schema.js";
 describe("configSchema", () => {
   describe("default config", () => {
     it("should have sensible defaults", () => {
-      expect(defaultConfig.commit.format).toBe("conventional");
+      expect(defaultConfig.commit.format).toBe("simple");
       expect(defaultConfig.commit.maxTitleLength).toBe(72);
       expect(defaultConfig.commit.prefix.enabled).toBe(true);
+      expect(defaultConfig.commit.prefix.style).toBe("capitalized");
       expect(defaultConfig.commit.prefix.branchFallback).toBe(true);
       expect(defaultConfig.commit.rules.imperativeMood).toBe(true);
       expect(defaultConfig.commit.rules.capitalizeTitle).toBe(true);

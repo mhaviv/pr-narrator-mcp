@@ -2,13 +2,15 @@ import { z } from "zod";
 
 /**
  * Prefix configuration for commits and PR titles
- * - Uses ticket if found
- * - Falls back to branch prefix (task/, bug/, feature/, etc.)
+ * - Uses ticket if found (e.g., PROJ-123)
+ * - Falls back to branch prefix capitalized (task/ -> Task, bug/ -> Bug)
+ * - No prefix on main/master/develop branches
  */
 const prefixSchema = z
   .object({
     enabled: z.boolean().default(true),
-    ticketFormat: z.string().default("{ticket}: "),
+    // Format style for prefix: "capitalized" = "PROJ-123:" or "Task:", "bracketed" = "[PROJ-123]" or "[Task]"
+    style: z.enum(["capitalized", "bracketed"]).default("capitalized"),
     branchFallback: z.boolean().default(true),
   })
   .default({});
@@ -18,16 +20,17 @@ const prefixSchema = z
  */
 const commitSchema = z
   .object({
+    // Format: "simple" = prefix + message, "conventional" = prefix + type(scope): message
     format: z
       .enum(["conventional", "gitmoji", "angular", "simple"])
-      .default("conventional"),
-    // Type format: how to display the commit type (feat, fix, etc.)
+      .default("simple"),
+    // Type format for conventional commits (only used when format != "simple")
     // - "capitalized": "Fix: message"
     // - "bracketed": "[Fix] message"
     typeFormat: z
       .enum(["capitalized", "bracketed"])
       .default("capitalized"),
-    // Whether to include scope in commit message (e.g., "Fix(auth): message")
+    // Whether to include scope in conventional commits (e.g., "Fix(auth): message")
     includeScope: z.boolean().default(false),
     maxTitleLength: z.number().min(20).max(200).default(72),
     maxBodyLineLength: z.number().min(50).max(200).default(100),
@@ -53,7 +56,8 @@ const prTitleSchema = z
     prefix: z
       .object({
         enabled: z.boolean().default(true),
-        ticketFormat: z.string().default("[{ticket}] "),
+        // Format style for PR title prefix: same as commit prefix
+        style: z.enum(["capitalized", "bracketed"]).default("capitalized"),
         branchFallback: z.boolean().default(true),
       })
       .default({}),

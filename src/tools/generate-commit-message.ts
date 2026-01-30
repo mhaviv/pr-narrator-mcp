@@ -185,14 +185,17 @@ export async function generateCommitMessage(
   let title: string;
 
   if (commitConfig.format === "simple") {
-    // Simple: just prefix + message (no type)
+    // Simple: just prefix + message (no conventional commit type)
     title = prefix + summary;
-  } else {
-    // Use configured type format (capitalized or bracketed)
+  } else if (commitConfig.format === "conventional" || commitConfig.format === "angular") {
+    // Conventional/Angular: prefix + type(scope): message
     const typeFormat = commitConfig.typeFormat || "capitalized";
     const includeScope = commitConfig.includeScope ?? false;
     const typePart = formatCommitType(type, typeFormat, scope, includeScope);
     title = prefix + typePart + summary;
+  } else {
+    // Default to simple
+    title = prefix + summary;
   }
 
   // Truncate if needed
@@ -253,34 +256,32 @@ export const generateCommitMessageTool = {
   name: "generate_commit_message",
   description: `Generate a commit message based on staged changes and user configuration.
 
-The message follows the user's configured format and applies their rules.
-
-Type format (configurable):
-- "capitalized": "Fix: message" (default)
-- "bracketed": "[Fix] message"
-
-Prefix behavior:
+Prefix behavior (default format is "simple"):
 - No prefix on main/master/develop branches
-- If a ticket is found in the branch name, uses ticket as prefix
-- If no ticket but branch has prefix (task/, bug/, etc.), uses that
-- Prefix can be disabled in config
+- If a ticket is found in branch (e.g., feature/PROJ-123-foo): "PROJ-123: message"
+- If no ticket but branch type (e.g., task/do-something): "Task: message"
+- Prefix style configurable: "capitalized" (Task:) or "bracketed" ([Task])
 
-Scope behavior:
-- Scopes are disabled by default (set includeScope: true in config to enable)
-- When enabled: "Fix(auth): message"
+Examples:
+- Branch "feature/PROJ-123-add-auth" → "PROJ-123: Add user authentication"
+- Branch "task/update-readme" → "Task: Update readme"
+- Branch "bug/fix-login" → "Bug: Fix login issue"
+- Branch "main" → "Update readme" (no prefix)
+
+For conventional commits format, set commit.format: "conventional" in config.
 
 Parameters:
 - repoPath: Path to the git repository
 - summary: Optional summary (if you've already analyzed the diff)
-- type: Optional type override (feat, fix, refactor, etc.)
-- scope: Optional scope override
+- type: Optional type override (feat, fix, etc.) - only for conventional format
+- scope: Optional scope override - only for conventional format
 - includeBody: Whether to include a commit body
 
 Returns:
 - title: The commit message title
 - body: Optional commit body
 - fullMessage: Complete commit message
-- context: Ticket, branch prefix, type, scope used
+- context: Ticket, branch prefix used
 - changes: Summary of staged changes
 - validation: Whether message passes all rules, with warnings`,
   inputSchema: {

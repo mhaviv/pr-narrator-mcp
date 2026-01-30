@@ -3,6 +3,14 @@ import type { Config, PrefixConfig } from "../config/schema.js";
 /**
  * Format the prefix for commits or PR titles
  * Priority: ticket > branch prefix (if branchFallback enabled)
+ * 
+ * Examples with style="capitalized":
+ * - Ticket found: "PROJ-123: "
+ * - Branch prefix "task": "Task: "
+ * 
+ * Examples with style="bracketed":
+ * - Ticket found: "[PROJ-123] "
+ * - Branch prefix "task": "[Task] "
  */
 export function formatPrefix(
   prefixConfig: PrefixConfig,
@@ -13,17 +21,28 @@ export function formatPrefix(
     return "";
   }
 
+  const style = prefixConfig.style || "capitalized";
+  let prefixValue: string | null = null;
+
   // Use ticket if found
   if (ticket) {
-    return prefixConfig.ticketFormat.replace("{ticket}", ticket);
+    prefixValue = ticket;
+  } else if (prefixConfig.branchFallback && branchPrefix) {
+    // Capitalize branch prefix (task -> Task, bug -> Bug)
+    prefixValue = branchPrefix.charAt(0).toUpperCase() + branchPrefix.slice(1).toLowerCase();
   }
 
-  // Fallback to branch prefix
-  if (prefixConfig.branchFallback && branchPrefix) {
-    return prefixConfig.ticketFormat.replace("{ticket}", branchPrefix);
+  if (!prefixValue) {
+    return "";
   }
 
-  return "";
+  // Format based on style
+  if (style === "bracketed") {
+    return `[${prefixValue}] `;
+  }
+  
+  // Default: capitalized style with colon
+  return `${prefixValue}: `;
 }
 
 /**

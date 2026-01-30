@@ -29,7 +29,7 @@ describe("generatePr", () => {
   const defaultConfig = {
     config: {
       commit: {
-        format: "conventional",
+        format: "simple",
         maxTitleLength: 72,
         maxBodyLineLength: 100,
         requireScope: false,
@@ -37,7 +37,7 @@ describe("generatePr", () => {
         scopes: [],
         prefix: {
           enabled: true,
-          ticketFormat: "{ticket}: ",
+          style: "capitalized",
           branchFallback: true,
         },
         rules: {
@@ -50,7 +50,7 @@ describe("generatePr", () => {
         title: {
           prefix: {
             enabled: true,
-            ticketFormat: "[{ticket}] ",
+            style: "capitalized",
             branchFallback: true,
           },
           maxLength: 100,
@@ -95,7 +95,7 @@ describe("generatePr", () => {
         titleSummary: "Add user authentication",
       });
 
-      expect(result.title).toBe("[PROJ-1234] Add user authentication");
+      expect(result.title).toBe("PROJ-1234: Add user authentication");
     });
 
     it("should use branch prefix as fallback when no ticket", async () => {
@@ -105,13 +105,13 @@ describe("generatePr", () => {
         titleSummary: "Add login page",
       });
 
-      expect(result.title).toBe("[Feature] Add login page");
+      expect(result.title).toBe("Feature: Add login page");
     });
 
     it("should extract summary from branch name when not provided", async () => {
       const result = await generatePr({});
 
-      expect(result.title).toContain("[PROJ-1234]");
+      expect(result.title).toContain("PROJ-1234:");
       expect(result.title).toContain("Add Login");
     });
 
@@ -305,7 +305,7 @@ describe("generatePr", () => {
       expect(result.suggestedActions[0].action).toBe("create_pr");
       expect(result.suggestedActions[0].mcpServer).toBe("user-github");
       expect(result.suggestedActions[0].tool).toBe("create_pull_request");
-      expect(result.suggestedActions[0].params.title).toBe("[PROJ-1234] Test PR");
+      expect(result.suggestedActions[0].params.title).toBe("PROJ-1234: Test PR");
       expect(result.suggestedActions[0].params.base).toBe("main");
     });
 
