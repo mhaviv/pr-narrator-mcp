@@ -15,7 +15,8 @@ import {
   truncate,
   inferCommitType,
   inferScope,
-  formatConventionalCommit,
+  formatCommitType,
+  isMainBranch,
   summarizeFileChanges,
 } from "../utils/formatters.js";
 
@@ -136,8 +137,10 @@ export async function generateCommitMessage(
   const type = input.type || inferCommitType(filePaths);
   const scope = input.scope || inferScope(filePaths, commitConfig.scopes);
 
-  // Generate prefix based on config
-  const prefix = formatPrefix(commitConfig.prefix, ticket, branchPrefix);
+  // Generate prefix based on config (skip for main/master branches)
+  const prefix = isMainBranch(currentBranch)
+    ? ""
+    : formatPrefix(commitConfig.prefix, ticket, branchPrefix);
 
   // Build the commit message
   let summary = input.summary || "";
@@ -181,17 +184,15 @@ export async function generateCommitMessage(
   // Build title based on format
   let title: string;
 
-  if (commitConfig.format === "conventional") {
-    // Conventional commit: type(scope): message
-    const conventionalPart = formatConventionalCommit(type, scope, summary);
-    title = prefix + conventionalPart;
-  } else if (commitConfig.format === "simple") {
-    // Simple: just prefix + message
+  if (commitConfig.format === "simple") {
+    // Simple: just prefix + message (no type)
     title = prefix + summary;
   } else {
-    // Default to conventional
-    const conventionalPart = formatConventionalCommit(type, scope, summary);
-    title = prefix + conventionalPart;
+    // Use configured type format (capitalized or bracketed)
+    const typeFormat = commitConfig.typeFormat || "capitalized";
+    const includeScope = commitConfig.includeScope ?? false;
+    const typePart = formatCommitType(type, typeFormat, scope, includeScope);
+    title = prefix + typePart + summary;
   }
 
   // Truncate if needed
@@ -252,13 +253,21 @@ export const generateCommitMessageTool = {
   name: "generate_commit_message",
   description: `Generate a commit message based on staged changes and user configuration.
 
-The message follows the user's configured format (conventional commits, simple, etc.)
-and applies their rules (imperative mood, capitalization, etc.).
+The message follows the user's configured format and applies their rules.
+
+Type format (configurable):
+- "capitalized": "Fix: message" (default)
+- "bracketed": "[Fix] message"
 
 Prefix behavior:
+- No prefix on main/master/develop branches
 - If a ticket is found in the branch name, uses ticket as prefix
 - If no ticket but branch has prefix (task/, bug/, etc.), uses that
 - Prefix can be disabled in config
+
+Scope behavior:
+- Scopes are disabled by default (set includeScope: true in config to enable)
+- When enabled: "Fix(auth): message"
 
 Parameters:
 - repoPath: Path to the git repository

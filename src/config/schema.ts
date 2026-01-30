@@ -21,6 +21,14 @@ const commitSchema = z
     format: z
       .enum(["conventional", "gitmoji", "angular", "simple"])
       .default("conventional"),
+    // Type format: how to display the commit type (feat, fix, etc.)
+    // - "capitalized": "Fix: message"
+    // - "bracketed": "[Fix] message"
+    typeFormat: z
+      .enum(["capitalized", "bracketed"])
+      .default("capitalized"),
+    // Whether to include scope in commit message (e.g., "Fix(auth): message")
+    includeScope: z.boolean().default(false),
     maxTitleLength: z.number().min(20).max(200).default(72),
     maxBodyLineLength: z.number().min(50).max(200).default(100),
     requireScope: z.boolean().default(false),

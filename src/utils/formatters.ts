@@ -249,7 +249,8 @@ export function inferScope(
 }
 
 /**
- * Format a conventional commit message
+ * Format a conventional commit message (legacy format with lowercase type)
+ * @deprecated Use formatCommitTitle for more flexible formatting
  */
 export function formatConventionalCommit(
   type: string,
@@ -260,6 +261,39 @@ export function formatConventionalCommit(
   const scopePart = scope ? `(${scope})` : "";
   const breakingMark = breaking ? "!" : "";
   return `${type}${scopePart}${breakingMark}: ${message}`;
+}
+
+/**
+ * Format the commit type with the specified format
+ * - "capitalized": "Fix: message" or "Fix(scope): message"
+ * - "bracketed": "[Fix] message" or "[Fix](scope) message"
+ */
+export function formatCommitType(
+  type: string,
+  typeFormat: "capitalized" | "bracketed",
+  scope: string | null,
+  includeScope: boolean
+): string {
+  // Capitalize the type (e.g., "feat" -> "Feat", "fix" -> "Fix")
+  const capitalizedType = type.charAt(0).toUpperCase() + type.slice(1);
+  
+  const scopePart = includeScope && scope ? `(${scope})` : "";
+  
+  if (typeFormat === "bracketed") {
+    return `[${capitalizedType}]${scopePart} `;
+  }
+  
+  // Default: capitalized format
+  return `${capitalizedType}${scopePart}: `;
+}
+
+/**
+ * Check if a branch is a main/default branch (should not have prefix)
+ */
+export function isMainBranch(branchName: string | null): boolean {
+  if (!branchName) return true;
+  const mainBranches = ["main", "master", "develop", "development"];
+  return mainBranches.includes(branchName.toLowerCase());
 }
 
 /**

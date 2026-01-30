@@ -102,7 +102,7 @@ describe("generateCommitMessage", () => {
       vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
     });
 
-    it("should generate conventional commit with ticket prefix", async () => {
+    it("should generate commit with ticket prefix and capitalized type", async () => {
       const result = await generateCommitMessage({
         summary: "Add user authentication",
         type: "feat",
@@ -110,7 +110,8 @@ describe("generateCommitMessage", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.title).toBe("PROJ-1234: feat(auth): Add user authentication");
+      // Default: capitalized type format, no scope (includeScope: false by default)
+      expect(result.title).toBe("PROJ-1234: Feat: Add user authentication");
       expect(result.context.ticket).toBe("PROJ-1234");
       expect(result.context.type).toBe("feat");
       expect(result.context.scope).toBe("auth");
@@ -291,7 +292,8 @@ describe("generateCommitMessage", () => {
 
       expect(result.success).toBe(true);
       expect(result.title).not.toContain("PROJ-123");
-      expect(result.title).toBe("feat: Add feature");
+      // Capitalized type format by default
+      expect(result.title).toBe("Feat: Add feature");
     });
   });
 });
