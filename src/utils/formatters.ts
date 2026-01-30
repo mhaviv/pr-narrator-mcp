@@ -442,12 +442,11 @@ export function generatePurposeSummary(
       }
     }
     
-    // If commit has bullet points, synthesize them (prose for ≤4, bullets for 5+)
+    // If commit has bullet points, synthesize them (prose for ≤3, bullets for 4+)
     if (bulletPoints.length > 0) {
       // Filter out test-related bullets if we'll mention tests separately
       const relevantBullets = bulletPoints
-        .filter(b => !hasTests || !/^add (unit )?tests?/i.test(b))
-        .slice(0, 6); // Max 6 items
+        .filter(b => !hasTests || !/^add (unit )?tests?/i.test(b));
       
       if (relevantBullets.length > 0) {
         const additionalContent = synthesizeAdditionalChanges(relevantBullets);
@@ -473,15 +472,14 @@ export function generatePurposeSummary(
       summary = convertToPresentTense(commitMessages[0]);
     }
     
-    // Synthesize additional commits (prose for ≤4, bullets for 5+)
+    // Synthesize additional commits (prose for ≤3, bullets for 4+)
     const additionalChanges = commitMessages.slice(1)
       .filter(m => {
         const lower = m.toLowerCase();
         // Skip if too similar to main summary or if it's just "add tests" etc
         return !summary.toLowerCase().includes(lower.slice(0, 20)) && 
                !/^(add|adds|added)\s+(test|tests|unit test)s?$/i.test(m);
-      })
-      .slice(0, 6); // Max 6 items
+      });
     
     if (additionalChanges.length > 0) {
       const additionalContent = synthesizeAdditionalChanges(additionalChanges);
@@ -650,16 +648,14 @@ function makeHighLevel(text: string): string {
  * Based on PR analysis:
  * - 1-3 items: prose style ("The PR also X and Y")
  * - 4+ items: bullet points ("The PR also addresses the following:")
- * - Max 5 bullets to keep it high-level
  */
 function synthesizeAdditionalChanges(items: string[]): string {
   if (items.length === 0) return "";
   
-  // Clean up and convert to present tense, limit to 5
+  // Clean up implementation details and convert to present tense
   const converted = items
     .map(b => makeHighLevel(convertToPresentTense(b)))
-    .filter(b => b.length > 10) // Filter out items that got too short
-    .slice(0, 5);
+    .filter(b => b.length > 10); // Filter out items that got too short after cleanup
   
   if (converted.length === 0) return "";
   
