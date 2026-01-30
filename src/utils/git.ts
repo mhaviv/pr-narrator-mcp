@@ -339,7 +339,10 @@ export async function getBranchChanges(
     const logResult = await git.log([`${baseBranch}..HEAD`]);
     const commits: CommitInfo[] = logResult.all.map((commit) => ({
       hash: commit.hash.substring(0, 7),
-      message: commit.message,
+      // Include body if present (simple-git splits subject and body)
+      message: commit.body 
+        ? `${commit.message}\n\n${commit.body}` 
+        : commit.message,
       author: commit.author_name,
       date: commit.date,
     }));
