@@ -206,12 +206,21 @@ describe("git utilities", () => {
       expect(result).toBe("development");
     });
 
-    it("should use provided fallback when no common branches found", async () => {
-      mockRaw.mockRejectedValue(new Error("not found"));
-      mockBranchLocal.mockResolvedValue({ all: ["feature/test", "bugfix/issue"] });
+    it("should use configured branch when explicitly set (not main)", async () => {
+      // Even if origin HEAD says main, configured branch wins
+      mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
+      mockBranchLocal.mockResolvedValue({ all: ["main", "develop"] });
 
-      const result = await getDefaultBranch("/fake/path", "custom-default");
-      expect(result).toBe("custom-default");
+      const result = await getDefaultBranch("/fake/path", "develop");
+      expect(result).toBe("develop");
+    });
+
+    it("should auto-detect when configured branch is 'main' (default)", async () => {
+      // When config is "main" (default), still try auto-detection
+      mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
+
+      const result = await getDefaultBranch("/fake/path", "main");
+      expect(result).toBe("develop");
     });
 
     it("should default to 'main' when all detection fails", async () => {
@@ -222,8 +231,8 @@ describe("git utilities", () => {
       expect(result).toBe("main");
     });
 
-    it("should prioritize origin HEAD over local branches", async () => {
-      // Origin says develop, but main exists locally
+    it("should prioritize origin HEAD over local branches when no config", async () => {
+      // Origin says develop, main exists locally - origin wins
       mockRaw.mockResolvedValue("refs/remotes/origin/develop\n");
       mockBranchLocal.mockResolvedValue({ all: ["main", "develop"] });
 

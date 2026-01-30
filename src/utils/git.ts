@@ -172,15 +172,23 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
 
 /**
  * Auto-detect the default/base branch for the repository
- * Checks in order:
- * 1. Remote HEAD reference (origin's default branch)
- * 2. Common branch names that exist locally (main, master, develop, development)
- * 3. Falls back to provided default
+ * 
+ * Priority:
+ * 1. If configuredBranch is explicitly set (not "main" default), use it
+ * 2. Remote HEAD reference (origin's default branch)
+ * 3. Common branch names that exist locally (main, master, develop, development)
+ * 4. Falls back to "main"
  */
 export async function getDefaultBranch(
   repoPath: string,
-  fallback: string = "main"
+  configuredBranch?: string
 ): Promise<string> {
+  // If user explicitly configured a branch (and it's not the default "main"), 
+  // trust their config over auto-detection
+  if (configuredBranch && configuredBranch !== "main") {
+    return configuredBranch;
+  }
+
   try {
     const validatedPath = validateRepoPath(repoPath);
     const git = createGit(validatedPath);
@@ -209,10 +217,10 @@ export async function getDefaultBranch(
       }
     }
 
-    // Fall back to provided default
-    return fallback;
+    // Fall back to configured or "main"
+    return configuredBranch || "main";
   } catch {
-    return fallback;
+    return configuredBranch || "main";
   }
 }
 
