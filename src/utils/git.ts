@@ -170,63 +170,119 @@ export async function getCurrentBranch(repoPath: string): Promise<string | null>
   }
 }
 
+export interface BaseBranchResult {
+  branch: string;
+  isConfigured: boolean;
+  alternatives: string[];
+  isAmbiguous: boolean;
+}
+
 /**
- * Auto-detect the base branch for PRs in this repository
+ * Detect the base branch for PRs in this repository
  * 
- * Logic:
- * 1. If 'develop' or 'development' branch exists → use it (gitflow pattern)
- * 2. Otherwise, use origin's default branch (origin/HEAD)
- * 3. Otherwise, use 'main' or 'master' if they exist
- * 4. Falls back to 'main'
+ * Priority:
+ * 1. If configuredBranch is set (from user's config), use it
+ * 2. Auto-detect from repo, but flag if ambiguous (multiple candidates)
  * 
- * This handles both gitflow repos (develop) and trunk-based repos (main/master)
- * without any configuration needed.
+ * Returns branch name plus metadata about alternatives for the AI to 
+ * ask the user if needed.
  */
 export async function getDefaultBranch(
   repoPath: string,
-  _configuredBranch?: string  // Kept for backwards compatibility but ignored
+  configuredBranch?: string
 ): Promise<string> {
+  const result = await detectBaseBranch(repoPath, configuredBranch);
+  return result.branch;
+}
+
+/**
+ * Detect base branch with full metadata about alternatives
+ */
+export async function detectBaseBranch(
+  repoPath: string,
+  configuredBranch?: string
+): Promise<BaseBranchResult> {
+  // If user configured a branch, use it - no ambiguity
+  if (configuredBranch && configuredBranch !== "main") {
+    return {
+      branch: configuredBranch,
+      isConfigured: true,
+      alternatives: [],
+      isAmbiguous: false,
+    };
+  }
+
   try {
     const validatedPath = validateRepoPath(repoPath);
     const git = createGit(validatedPath);
-
-    // Get local branches
-    const branches = await git.branchLocal();
+    const branchInfo = await git.branch();
+    const branches = branchInfo.all;
     
-    // Priority 1: If develop/development exists, it's likely gitflow - use it
-    // This is the most common pattern for repos where PRs target develop
-    if (branches.all.includes("develop")) {
-      return "develop";
-    }
-    if (branches.all.includes("development")) {
-      return "development";
-    }
-
-    // Priority 2: Try origin's default branch
-    try {
-      const remoteHead = await git.raw(["symbolic-ref", "refs/remotes/origin/HEAD"]);
-      if (remoteHead) {
-        const match = remoteHead.trim().match(/refs\/remotes\/origin\/(.+)/);
-        if (match && match[1]) {
-          return match[1];
-        }
+    // Find all candidate base branches
+    const candidates: string[] = [];
+    const commonBranches = ["main", "master", "develop", "development"];
+    
+    for (const branch of commonBranches) {
+      if (branches.includes(branch)) {
+        candidates.push(branch);
       }
-    } catch {
-      // Remote HEAD not set, continue
     }
 
-    // Priority 3: Check for main/master
-    if (branches.all.includes("main")) {
-      return "main";
-    }
-    if (branches.all.includes("master")) {
-      return "master";
+    // If no candidates found, try origin HEAD
+    if (candidates.length === 0) {
+      try {
+        const remoteHead = await git.raw(["symbolic-ref", "refs/remotes/origin/HEAD"]);
+        if (remoteHead) {
+          const match = remoteHead.trim().match(/refs\/remotes\/origin\/(.+)/);
+          if (match && match[1]) {
+            return {
+              branch: match[1],
+              isConfigured: false,
+              alternatives: [],
+              isAmbiguous: false,
+            };
+          }
+        }
+      } catch {
+        // Continue to fallback
+      }
+      
+      return {
+        branch: "main",
+        isConfigured: false,
+        alternatives: [],
+        isAmbiguous: false,
+      };
     }
 
-    // Fallback
-    return "main";
+    // Single candidate - no ambiguity
+    if (candidates.length === 1) {
+      return {
+        branch: candidates[0],
+        isConfigured: false,
+        alternatives: [],
+        isAmbiguous: false,
+      };
+    }
+
+    // Multiple candidates - ambiguous!
+    // Pick first one but flag as ambiguous with alternatives
+    const selected = candidates[0];
+    const alternatives = candidates.slice(1);
+    
+    return {
+      branch: selected,
+      isConfigured: false,
+      alternatives,
+      isAmbiguous: true,
+    };
   } catch {
-    return "main";
+    return {
+      branch: configuredBranch || "main",
+      isConfigured: !!configuredBranch,
+      alternatives: [],
+      isAmbiguous: false,
+    };
   }
 }
 

@@ -8,7 +8,12 @@ vi.mock("../../src/utils/git.js", () => ({
   extractTicketFromBranch: vi.fn(),
   extractBranchPrefix: vi.fn(),
   extractTicketsFromCommits: vi.fn(),
-  getDefaultBranch: vi.fn().mockResolvedValue("main"),
+  detectBaseBranch: vi.fn().mockResolvedValue({
+    branch: "main",
+    isConfigured: false,
+    alternatives: [],
+    isAmbiguous: false,
+  }),
   validateRepoPath: vi.fn((path) => path || process.cwd()),
 }));
 

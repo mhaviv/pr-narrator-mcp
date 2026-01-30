@@ -6,7 +6,7 @@ import {
   extractTicketFromBranch,
   extractBranchPrefix,
   extractTicketsFromCommits,
-  getDefaultBranch,
+  detectBaseBranch,
 } from "../utils/git.js";
 import { formatPrefix, truncate, formatTicketLink } from "../utils/formatters.js";
 import type { PrSection } from "../config/schema.js";
@@ -16,6 +16,10 @@ export const generatePrSchema = z.object({
     .string()
     .optional()
     .describe("Path to the git repository (defaults to current directory)"),
+  baseBranch: z
+    .string()
+    .optional()
+    .describe("Base branch to compare against (e.g., 'main', 'develop'). If not specified, auto-detects."),
   titleSummary: z
     .string()
     .optional()
@@ -44,6 +48,8 @@ export interface GeneratePrResult {
     branchPrefix: string | null;
     branchName: string | null;
     baseBranch: string;
+    baseBranchAlternatives: string[];
+    baseBranchIsAmbiguous: boolean;
     commitCount: number;
     tickets: string[];
     filesChanged: number;
@@ -54,6 +60,7 @@ export interface GeneratePrResult {
     tool: string;
     params: Record<string, unknown>;
   }>;
+  warnings: string[];
 }
 
 /**
@@ -112,14 +119,28 @@ export async function generatePr(
   input: GeneratePrInput
 ): Promise<GeneratePrResult> {
   const repoPath = input.repoPath || process.cwd();
+  const warnings: string[] = [];
 
   // Load config
   const { config } = await loadConfig(repoPath);
   const prConfig = config.pr;
   const prTitleConfig = prConfig.title;
   
-  // Auto-detect base branch from repo, fall back to config value
-  const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
+  // Detect base branch - prefer input parameter, then config, then auto-detect
+  const baseBranchResult = await detectBaseBranch(
+    repoPath, 
+    input.baseBranch || config.baseBranch
+  );
+  const baseBranch = baseBranchResult.branch;
+  
+  // Warn if multiple base branches detected and user hasn't specified one
+  if (baseBranchResult.isAmbiguous) {
+    warnings.push(
+      `Multiple base branches found: ${baseBranch}, ${baseBranchResult.alternatives.join(", ")}. ` +
+      `Using '${baseBranch}'. To use a different branch, set baseBranch in pr-narrator.config.json ` +
+      `or pass baseBranch parameter.`
+    );
+  }
 
   // Get branch info
   const branchName = await getCurrentBranch(repoPath);
@@ -254,11 +275,14 @@ export async function generatePr(
       branchPrefix,
       branchName,
       baseBranch,
+      baseBranchAlternatives: baseBranchResult.alternatives,
+      baseBranchIsAmbiguous: baseBranchResult.isAmbiguous,
       commitCount: commits.length,
       tickets,
       filesChanged,
     },
     suggestedActions,
+    warnings,
   };
 }
 
@@ -268,6 +292,11 @@ export const generatePrTool = {
 
 This is the main tool for PR creation - it combines generate_pr_title and 
 generate_pr_description into a single call.
+
+Base Branch:
+- Auto-detects from repo (checks for main, master, develop)
+- If multiple branches exist (e.g., main AND develop), returns warning
+- Use baseBranch parameter to specify explicitly
 
 Title:
 - Automatically extracts ticket from branch name
@@ -280,14 +309,11 @@ Description:
 - Auto-populates Tickets from branch/commits
 - Supports custom sections
 
-Integration:
-- If VCS integration is configured, returns suggestedActions
-  that can be used to create the PR via GitHub/GitLab MCP
-
 Returns:
 - title: Complete PR title with prefix
 - description: Full markdown description
-- context: All extracted context (ticket, branch, commits, etc.)
+- context: All extracted context including baseBranch alternatives
+- warnings: Any ambiguity warnings (e.g., multiple base branches found)
 - suggestedActions: Ready-to-execute VCS MCP calls (if configured)`,
   inputSchema: {
     type: "object" as const,
@@ -295,6 +321,10 @@ Returns:
       repoPath: {
         type: "string",
         description: "Path to the git repository (defaults to current directory)",
+      },
+      baseBranch: {
+        type: "string",
+        description: "Base branch to compare against (e.g., 'main', 'develop'). Auto-detects if not specified.",
       },
       titleSummary: {
         type: "string",
