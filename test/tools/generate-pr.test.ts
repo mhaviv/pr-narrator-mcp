@@ -184,7 +184,7 @@ describe("generatePr", () => {
 
       expect(result.purposeGuidelines).toBeDefined();
       expect(result.purposeGuidelines).toContain("prose");
-      expect(result.purposeGuidelines).toContain("Present tense");
+      expect(result.purposeGuidelines).toContain("present tense");
     });
   });
 

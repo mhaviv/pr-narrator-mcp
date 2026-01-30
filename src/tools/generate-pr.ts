@@ -290,24 +290,34 @@ export async function generatePr(
     };
   }
 
-  const purposeGuidelines = `REWRITE the Purpose section using commitBullets as context. Output prose only.
+  const purposeGuidelines = `You MUST rewrite the Purpose section as complete prose that covers all key changes.
 
-Style:
-- Present tense: "Enables...", "Adds...", "Fixes...", "Updates..."
-- Functional description (what it does), not implementation steps
-- 1-3 sentences depending on complexity
-- If tests included, end with: "Includes unit tests for X."
+The 'description' field has a placeholder Purpose (just the commit title). You must REPLACE it 
+with a full prose description synthesized from commitBullets. Never show bullets to the user.
 
-Process:
-1. Read commitBullets to understand scope
-2. Identify the main feature/fix
-3. Write prose that describes WHAT the PR accomplishes
-4. Do NOT copy bullets, do NOT list them, do NOT show them to user
+HOW TO WRITE:
+1. Read ALL commitBullets to understand the full scope
+2. Group related changes conceptually (e.g., "extracts author" + "maps to Slack ID" = "GitHub-to-Slack user mapping")
+3. Write 2-4 sentences that tell the complete story of what this PR does
+4. Use present tense: "Enables...", "Adds...", "Extracts...", "Maps..."
+5. Include key technical details but as prose, not implementation steps
+6. If tests included, mention what's tested
 
-Examples:
-- Simple: "Updates CI pipeline to Xcode 26.1.1."
-- Medium: "Enables Slack notifications to PR authors when builds fail, including GitHub-to-Slack user mapping and duplicate notification prevention."
-- With tests: "Adds weather condition testing tool with ProxyScripts folder. Includes unit tests for weather icon mapping."`;
+EXAMPLE - Given these bullets:
+- Extract PR author from GitHub PR metadata
+- Encode author in tag suffix for Azure pipelines  
+- Add threaded failure notification in slack_aggregator.py
+- Look up Slack user ID from env variables
+- Track pinged_author_ts to prevent duplicate pings
+- Add unit tests for notification functionality
+
+WRITE THIS Purpose:
+"Enables automatic Slack notifications to PR authors when builds fail. Extracts the PR author from GitHub metadata and maps GitHub usernames to Slack user IDs for proper @mentions in threaded replies. Includes duplicate notification prevention and unit tests for the notification functionality."
+
+NOT THIS:
+- Just "Ping PR author when builds fail" (too short, missing detail)
+- Showing bullets separately as "implementation details" (wrong format)
+- "The MCP provided these points..." (never reference the MCP)`;
 
   return {
     title,
@@ -333,21 +343,21 @@ export const generatePrTool = {
   name: "generate_pr",
   description: `Generate a PR title and description.
 
-Returns title and description. The 'purposeContext' and 'purposeGuidelines' are 
-INTERNAL data for you to rewrite the Purpose section - do NOT show them to the user.
+IMPORTANT: The returned 'description' has a PLACEHOLDER Purpose (just the commit title).
+You MUST rewrite it as complete prose BEFORE showing to the user.
 
-CRITICAL: Before showing the PR to the user, you MUST:
-1. Read purposeContext.commitBullets to understand what the PR does
-2. Follow purposeGuidelines to rewrite the Purpose as prose (1-3 sentences)
-3. Replace the basic Purpose in 'description' with your prose version
-4. Show ONLY the final title and description - never show purposeContext or bullets
+Use 'purposeContext.commitBullets' and 'purposeGuidelines' to write a FULL Purpose section
+that covers all the key changes in 2-4 sentences of prose. Then show ONLY the final
+title + rewritten description. Never show bullets, never mention "MCP provided", never
+show purposeContext to the user.
 
-Example transformation:
-- Bullets: "Extract PR author", "Encode author in tag", "Add notification", "Look up Slack ID"
-- Good Purpose: "Enables Slack notifications to PR authors when builds fail, including GitHub-to-Slack user mapping and duplicate notification prevention."
+Example - if bullets mention "extract author", "map to Slack ID", "threaded notification", "prevent duplicates":
+Write: "Enables automatic Slack notifications to PR authors when builds fail. Extracts the 
+PR author from GitHub metadata and maps to Slack user IDs for @mentions. Includes duplicate 
+notification prevention."
 
-BAD: Showing bullets as "implementation details" or separate list
-GOOD: Synthesizing bullets into natural prose description`,
+WRONG: Showing short Purpose + bullets separately
+RIGHT: One complete prose Purpose block with all key details synthesized`,
   inputSchema: {
     type: "object" as const,
     properties: {
