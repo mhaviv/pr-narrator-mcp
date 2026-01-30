@@ -218,15 +218,31 @@ export async function generateCommitMessage(
   const commitGuidelines = needsAiRewrite
     ? `The title "${title}" is a PLACEHOLDER. You MUST rewrite it based on the diff.
 
-Analyze the diff in changes.diff and write a meaningful commit message that:
-1. Describes WHAT changed and WHY (not just which file)
-2. Uses imperative mood: "Fix...", "Add...", "Update...", "Remove..."
-3. Is concise but specific (e.g., "Fix suffix removal for usernames containing -by-")
-4. Keeps the prefix "${prefix}" at the start
+Analyze the diff in changes.diff and write a commit message following this style:
 
-Example:
-- BAD: "Update extract_build_metadata.yml"
-- GOOD: "Fix suffix removal for usernames containing -by- substring"
+TITLE FORMAT:
+- Keep prefix "${prefix}" at the start
+- Describe WHAT changed functionally (not which file)
+- Use imperative verbs: Add, Update, Fix, Remove, Migrate, Refactor
+- Be specific: "Fix suffix removal for usernames containing -by-" not "Update file"
+
+BODY FORMAT (if includeBody or complex change):
+- Use "- " bullets for each distinct change
+- Describe what each change does, not implementation details
+- Keep bullets concise but meaningful
+
+EXAMPLES:
+Title only:
+- "${prefix}Fix suffix removal for usernames containing -by- substring"
+- "${prefix}Update Xcode version from 16.0.1 to 16.1.1 in pipeline"
+- "${prefix}Add API documentation for weather endpoints"
+
+With body:
+"${prefix}Fix location sync on significant location change
+
+- Add delegate calls to trigger /device endpoint when location changes
+- Migrate device insights from Promise to async/await
+- Add debouncer delay to consolidate startup API calls"
 
 Show ONLY the final rewritten commit message to the user.`
     : null;
@@ -262,24 +278,26 @@ export const generateCommitMessageTool = {
   name: "generate_commit_message",
   description: `Generate a commit message based on staged changes.
 
-IMPORTANT: If no 'summary' parameter is provided, the returned 'title' is a PLACEHOLDER.
-You MUST analyze 'changes.diff' and rewrite it as a meaningful commit message.
+IMPORTANT: If no 'summary' provided, the returned 'title' is a PLACEHOLDER.
+You MUST analyze 'changes.diff' and rewrite it following commitGuidelines.
 
 When commitGuidelines is present:
 1. Read the diff in changes.diff
-2. Understand WHAT changed and WHY
-3. Write a specific commit message (not just "Update {file}")
-4. Keep the prefix from context.prefix
-5. Show ONLY the final rewritten message to the user
+2. Understand WHAT changed functionally
+3. Write a specific title: "Fix X", "Add Y", "Update Z to version"
+4. If complex change, add body with "- " bullets for each change
+5. Keep the prefix from context.prefix
+6. Show ONLY the final message to the user
 
 Prefix behavior:
 - No prefix on main/master/develop branches
-- If ticket found in branch: "PROJ-123: message"
-- If no ticket but branch type: "Task: message"
+- If ticket found: "PROJ-123: message"
+- If branch type: "Task: message", "Bug: message"
 
-Example rewrites:
-- BAD: "Task: Update extract_build_metadata.yml"
-- GOOD: "Task: Fix suffix removal for usernames containing -by-"`,
+Examples:
+- "Task: Fix suffix removal for usernames containing -by- substring"
+- "Bug: Fix HolaSpark loading race condition with ReachabilityState enum"
+- "WTHRAPP-3104: Update winter weather icons and illustration mappings"`,
   inputSchema: {
     type: "object" as const,
     properties: {
