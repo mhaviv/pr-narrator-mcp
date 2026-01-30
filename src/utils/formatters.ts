@@ -624,17 +624,44 @@ function extractTestContext(testFiles: Array<{ path: string }>, moduleContext: s
 }
 
 /**
+ * Clean up implementation details to make bullets more high-level
+ * Removes: file names, parenthetical details, code references
+ */
+function makeHighLevel(text: string): string {
+  return text
+    // Remove "in filename.py" or "in some_module"
+    .replace(/\s+in\s+[\w._-]+\.(py|ts|js|yml|yaml|swift|kt|java|go|rs|rb|sh)$/i, "")
+    .replace(/\s+in\s+[a-z_]+[A-Z]\w*$/g, "") // camelCase module names
+    .replace(/\s+in\s+[a-z_]+$/g, "") // snake_case module names
+    // Remove parenthetical details like "(supports X)" or "(-by-{username})"
+    .replace(/\s*\([^)]+\)\s*/g, " ")
+    // Remove code-like references with braces
+    .replace(/\{[^}]+\}/g, "")
+    // Remove env var patterns like SLACK_USER_username
+    .replace(/[A-Z_]{2,}_\w+/g, "environment variables")
+    // Clean up multiple spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Synthesize additional changes into output
  * 
  * Based on PR analysis:
  * - 1-3 items: prose style ("The PR also X and Y")
  * - 4+ items: bullet points ("The PR also addresses the following:")
+ * - Max 5 bullets to keep it high-level
  */
 function synthesizeAdditionalChanges(items: string[]): string {
   if (items.length === 0) return "";
   
-  // Convert all items to present tense
-  const converted = items.map(b => convertToPresentTense(b));
+  // Clean up and convert to present tense, limit to 5
+  const converted = items
+    .map(b => makeHighLevel(convertToPresentTense(b)))
+    .filter(b => b.length > 10) // Filter out items that got too short
+    .slice(0, 5);
+  
+  if (converted.length === 0) return "";
   
   // 4+ items: use bullets (avoids comma-heavy run-on sentences)
   if (converted.length >= 4) {
