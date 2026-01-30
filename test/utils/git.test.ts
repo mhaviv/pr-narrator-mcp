@@ -6,25 +6,25 @@ import {
 
 describe("git utilities", () => {
   describe("extractTicketFromBranch", () => {
-    const jiraPattern = "WTHRAPP-\\d+";
+    const jiraPattern = "PROJ-\\d+";
     const genericPattern = "[A-Z]+-\\d+";
 
     it("should extract ticket from feature branch", () => {
       expect(
-        extractTicketFromBranch("feature/WTHRAPP-1234-add-login", jiraPattern)
-      ).toBe("WTHRAPP-1234");
+        extractTicketFromBranch("feature/PROJ-1234-add-login", jiraPattern)
+      ).toBe("PROJ-1234");
     });
 
     it("should extract ticket from branch with ticket at start", () => {
       expect(
-        extractTicketFromBranch("WTHRAPP-5678-fix-bug", jiraPattern)
-      ).toBe("WTHRAPP-5678");
+        extractTicketFromBranch("PROJ-5678-fix-bug", jiraPattern)
+      ).toBe("PROJ-5678");
     });
 
     it("should extract ticket case-insensitively", () => {
       expect(
-        extractTicketFromBranch("feature/wthrapp-1234-add-login", jiraPattern)
-      ).toBe("wthrapp-1234");
+        extractTicketFromBranch("feature/proj-1234-add-login", jiraPattern)
+      ).toBe("proj-1234");
     });
 
     it("should return null when no ticket found", () => {
@@ -35,7 +35,7 @@ describe("git utilities", () => {
 
     it("should return null when no pattern provided", () => {
       expect(
-        extractTicketFromBranch("feature/WTHRAPP-1234", undefined)
+        extractTicketFromBranch("feature/PROJ-1234", undefined)
       ).toBe(null);
     });
 

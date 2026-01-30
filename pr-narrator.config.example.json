@@ -31,9 +31,9 @@
       { "name": "Screenshots", "required": false }
     ]
   },
-  "ticketPattern": "WTHRAPP-\\d+",
-  "ticketLinkFormat": "https://jira.foxcorp.com/browse/{ticket}",
-  "baseBranch": "develop",
+  "ticketPattern": "PROJ-\\d+",
+  "ticketLinkFormat": "https://your-jira.atlassian.net/browse/{ticket}",
+  "baseBranch": "main",
   "integrations": {
     "vcs": {
       "provider": "github",

@@ -12,7 +12,7 @@ An MCP (Model Context Protocol) server that eliminates the hassle of vetting AI-
 ## ✨ Features
 
 - 📝 **Commit Message Generation** - Creates messages following your configured format (Conventional Commits, simple, etc.)
-- 🎫 **Automatic Ticket Extraction** - Extracts ticket numbers from branch names (e.g., `feature/WTHRAPP-1234-add-login`)
+- 🎫 **Automatic Ticket Extraction** - Extracts ticket numbers from branch names (e.g., `feature/PROJ-1234-add-login`)
 - 🏷️ **Smart Prefix Fallback** - Uses branch prefix (`task/`, `bug/`, `feature/`) when no ticket is found
 - ✅ **Configurable Rules** - Enforce imperative mood, capitalization, no trailing periods, max length
 - 📊 **Git Analysis** - Provides context about staged changes and branch history
@@ -115,8 +115,8 @@ const result = await generate_commit_message({
 
 // Output:
 // {
-//   title: "WTHRAPP-1234: feat(auth): Add user authentication flow",
-//   context: { ticket: "WTHRAPP-1234", type: "feat", scope: "auth" },
+//   title: "PROJ-1234: feat(auth): Add user authentication flow",
+//   context: { ticket: "PROJ-1234", type: "feat", scope: "auth" },
 //   validation: { valid: true, warnings: [] }
 // }
 ```
@@ -130,9 +130,9 @@ const result = await generate_pr({
 
 // Output:
 // {
-//   title: "[WTHRAPP-1234] Add User Authentication",
+//   title: "[PROJ-1234] Add User Authentication",
 //   description: "## Summary\n\nImplements OAuth...\n\n## Changes\n\n- feat(auth): Add OAuth...",
-//   context: { ticket: "WTHRAPP-1234", commitCount: 3 }
+//   context: { ticket: "PROJ-1234", commitCount: 3 }
 // }
 ```
 
@@ -171,8 +171,8 @@ Create a `pr-narrator.config.json` in your project root (optional — sensible d
       { "name": "Test Plan", "required": false }
     ]
   },
-  "ticketPattern": "WTHRAPP-\\d+",
-  "ticketLinkFormat": "https://jira.example.com/browse/{ticket}",
+  "ticketPattern": "PROJ-\\d+",
+  "ticketLinkFormat": "https://your-jira.atlassian.net/browse/{ticket}",
   "baseBranch": "develop"
 }
 ```
@@ -211,7 +211,7 @@ Create a `pr-narrator.config.json` in your project root (optional — sensible d
 
 | Branch | Result |
 |--------|--------|
-| `feature/WTHRAPP-1234-add-login` | `WTHRAPP-1234: ` (commit) / `[WTHRAPP-1234] ` (PR) |
+| `feature/PROJ-1234-add-login` | `PROJ-1234: ` (commit) / `[PROJ-1234] ` (PR) |
 | `task/update-readme` | `Task: ` (from branch prefix) |
 | `bug/fix-crash` | `Bug: ` (from branch prefix) |
 | `main` | (no prefix) |

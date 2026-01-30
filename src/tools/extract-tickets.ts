@@ -160,7 +160,7 @@ export const extractTicketsTool = {
   description: `Extract ticket numbers from the current branch, commits, and optional additional text.
 
 Uses the configured ticketPattern regex to find tickets in:
-1. Branch name (e.g., "feature/WTHRAPP-1234-add-login")
+1. Branch name (e.g., "feature/PROJ-1234-add-login")
 2. Commit messages since base branch
 3. Additional text provided (e.g., PR title)
 
