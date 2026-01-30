@@ -62,11 +62,15 @@ export interface GenerateCommitMessageResult {
     fileCount: number;
     files: string[];
     summary: string;
+    /** The actual diff content for AI to analyze */
+    diff: string | null;
   };
   validation: {
     valid: boolean;
     warnings: string[];
   };
+  /** Guidelines for AI when summary wasn't provided */
+  commitGuidelines: string | null;
   errors: string[];
 }
 
@@ -102,11 +106,13 @@ export async function generateCommitMessage(
         fileCount: 0,
         files: [],
         summary: "No staged changes",
+        diff: null,
       },
       validation: {
         valid: false,
         warnings: [],
       },
+      commitGuidelines: null,
       errors: ["No staged changes found. Stage changes with 'git add' first."],
     };
   }
@@ -132,8 +138,9 @@ export async function generateCommitMessage(
 
   // Build the commit message
   let summary = input.summary || "";
+  let needsAiRewrite = false;
 
-  // If no summary provided, create a generic one from file changes
+  // If no summary provided, create a placeholder and flag for AI rewrite
   if (!summary) {
     const fileCount = stagedChanges.files.length;
     if (fileCount === 1) {
@@ -141,9 +148,7 @@ export async function generateCommitMessage(
     } else {
       summary = `Update ${fileCount} files`;
     }
-    warnings.push(
-      "No summary provided - using generic message. Consider providing a summary for better commit messages."
-    );
+    needsAiRewrite = true;
   }
 
   // Apply rules
@@ -209,6 +214,23 @@ export async function generateCommitMessage(
   const fullMessage = body ? `${title}\n${body}` : title;
   const valid = errors.length === 0;
 
+  // If AI needs to rewrite, provide diff and guidelines
+  const commitGuidelines = needsAiRewrite
+    ? `The title "${title}" is a PLACEHOLDER. You MUST rewrite it based on the diff.
+
+Analyze the diff in changes.diff and write a meaningful commit message that:
+1. Describes WHAT changed and WHY (not just which file)
+2. Uses imperative mood: "Fix...", "Add...", "Update...", "Remove..."
+3. Is concise but specific (e.g., "Fix suffix removal for usernames containing -by-")
+4. Keeps the prefix "${prefix}" at the start
+
+Example:
+- BAD: "Update extract_build_metadata.yml"
+- GOOD: "Fix suffix removal for usernames containing -by- substring"
+
+Show ONLY the final rewritten commit message to the user.`
+    : null;
+
   return {
     success: true,
     title,
@@ -225,11 +247,13 @@ export async function generateCommitMessage(
       fileCount: stagedChanges.files.length,
       files: filePaths,
       summary: summarizeFileChanges(stagedChanges.files),
+      diff: needsAiRewrite ? stagedChanges.diff : null,
     },
     validation: {
       valid,
       warnings,
     },
+    commitGuidelines,
     errors,
   };
 }
@@ -238,15 +262,24 @@ export const generateCommitMessageTool = {
   name: "generate_commit_message",
   description: `Generate a commit message based on staged changes.
 
+IMPORTANT: If no 'summary' parameter is provided, the returned 'title' is a PLACEHOLDER.
+You MUST analyze 'changes.diff' and rewrite it as a meaningful commit message.
+
+When commitGuidelines is present:
+1. Read the diff in changes.diff
+2. Understand WHAT changed and WHY
+3. Write a specific commit message (not just "Update {file}")
+4. Keep the prefix from context.prefix
+5. Show ONLY the final rewritten message to the user
+
 Prefix behavior:
 - No prefix on main/master/develop branches
-- If ticket found in branch (e.g., feature/PROJ-123-foo): "PROJ-123: message"
-- If no ticket but branch type (e.g., task/do-something): "Task: message"
+- If ticket found in branch: "PROJ-123: message"
+- If no ticket but branch type: "Task: message"
 
-Examples:
-- Branch "feature/PROJ-123-add-auth" → "PROJ-123: Add user authentication"
-- Branch "task/update-readme" → "Task: Update readme"
-- Branch "main" → "Update readme" (no prefix)`,
+Example rewrites:
+- BAD: "Task: Update extract_build_metadata.yml"
+- GOOD: "Task: Fix suffix removal for usernames containing -by-"`,
   inputSchema: {
     type: "object" as const,
     properties: {

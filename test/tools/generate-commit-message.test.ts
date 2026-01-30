@@ -66,12 +66,14 @@ describe("generateCommitMessage", () => {
       expect(result.title).toContain("Task:");
     });
 
-    it("should generate generic message when no summary provided", async () => {
+    it("should generate placeholder and guidelines when no summary provided", async () => {
       const result = await generateCommitMessage({}, testConfig);
 
       expect(result.success).toBe(true);
       expect(result.title).toContain("Update");
-      expect(result.validation.warnings.length).toBeGreaterThan(0);
+      // Should include diff and guidelines for AI to rewrite
+      expect(result.commitGuidelines).not.toBeNull();
+      expect(result.changes.diff).not.toBeNull();
     });
 
     it("should capitalize first letter", async () => {
