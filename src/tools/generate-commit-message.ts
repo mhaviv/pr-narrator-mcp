@@ -223,7 +223,8 @@ BODY FORMAT (for complex changes with multiple distinct changes):
 - Use "- " bullets for each distinct change
 - Describe what each change does, not implementation details
 - Keep bullets concise but meaningful
-- Do NOT add file counts or "Ticket:" lines - just the bullets
+- NEVER add file counts like "X files changed (+Y -Z lines)" - this is metadata, not part of commit
+- NEVER add "Ticket:" lines - ticket is already in the prefix
 
 EXAMPLES:
 Title only:
@@ -256,7 +257,8 @@ Show ONLY the final rewritten commit message to the user.`
     changes: {
       fileCount: stagedChanges.files.length,
       files: filePaths,
-      summary: summarizeFileChanges(stagedChanges.files),
+      // Only include summary when not rewriting (AI shouldn't copy file stats)
+      summary: needsAiRewrite ? "" : summarizeFileChanges(stagedChanges.files),
       diff: needsAiRewrite ? stagedChanges.diff : null,
     },
     validation: {
