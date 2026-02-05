@@ -19,7 +19,7 @@ export const analyzeGitChangesSchema = z.object({
   repoPath: z
     .string()
     .optional()
-    .describe("Path to the git repository (defaults to current directory)"),
+    .describe("Path to the git repository. Always pass the user's current project/workspace directory."),
   includeFullDiff: z
     .boolean()
     .optional()
@@ -82,7 +82,7 @@ export async function analyzeGitChanges(
   input: AnalyzeGitChangesInput,
   config: Config
 ): Promise<AnalyzeGitChangesResult> {
-  const repoPath = input.repoPath || process.cwd();
+  const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
   const includeFullDiff = input.includeFullDiff ?? false;
   const errors: string[] = [];
 
@@ -212,7 +212,7 @@ Use this before generating commits or PRs to understand the changes.`,
     properties: {
       repoPath: {
         type: "string",
-        description: "Path to the git repository (defaults to current directory)",
+        description: "Path to the git repository. IMPORTANT: Always pass the user's current project/workspace directory.",
       },
       includeFullDiff: {
         type: "boolean",

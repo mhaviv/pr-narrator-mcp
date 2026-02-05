@@ -11,7 +11,7 @@ export const generatePrTitleSchema = z.object({
   repoPath: z
     .string()
     .optional()
-    .describe("Path to the git repository (defaults to current directory)"),
+    .describe("Path to the git repository. Always pass the user's current project/workspace directory."),
   summary: z
     .string()
     .optional()
@@ -33,6 +33,8 @@ export interface GeneratePrTitleResult {
     withinMaxLength: boolean;
     maxLength: number;
     currentLength: number;
+    /** Suggested truncated title if original exceeds maxLength */
+    truncatedSuggestion: string | null;
   };
 }
 
@@ -43,7 +45,7 @@ export async function generatePrTitle(
   input: GeneratePrTitleInput,
   config: Config
 ): Promise<GeneratePrTitleResult> {
-  const repoPath = input.repoPath || process.cwd();
+  const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
   const providedSummary = input.summary || "";
   const prTitleConfig = config.pr.title;
 
@@ -102,16 +104,12 @@ export async function generatePrTitle(
     summary = "[Describe your changes]";
   }
 
-  // Build title
-  let title = prefix + summary;
+  // Build title (keep full title, provide truncated suggestion if needed)
+  const title = prefix + summary;
 
-  // Check length
   const maxLength = prTitleConfig.maxLength;
   const withinMaxLength = title.length <= maxLength;
-
-  if (!withinMaxLength) {
-    title = truncate(title, maxLength);
-  }
+  const truncatedSuggestion = withinMaxLength ? null : truncate(title, maxLength);
 
   return {
     title,
@@ -126,6 +124,7 @@ export async function generatePrTitle(
       withinMaxLength,
       maxLength,
       currentLength: title.length,
+      truncatedSuggestion,
     },
   };
 }
@@ -144,7 +143,7 @@ If no summary is provided, extracts one from the branch name.`,
     properties: {
       repoPath: {
         type: "string",
-        description: "Path to the git repository (defaults to current directory)",
+        description: "Path to the git repository. IMPORTANT: Always pass the user's current project/workspace directory.",
       },
       summary: {
         type: "string",

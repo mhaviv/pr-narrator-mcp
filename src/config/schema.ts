@@ -32,7 +32,7 @@ const commitSchema = z
       .default("capitalized"),
     // Whether to include scope in conventional commits (e.g., "Fix(auth): message")
     includeScope: z.boolean().default(false),
-    maxTitleLength: z.number().min(20).max(200).default(72),
+    maxTitleLength: z.number().min(20).max(200).default(100),
     maxBodyLineLength: z.number().min(50).max(200).default(100),
     requireScope: z.boolean().default(false),
     requireBody: z.boolean().default(false),
@@ -143,6 +143,9 @@ export const configSchema = z.object({
   ticketLinkFormat: z.string().optional(),
   // Optional - if not set, auto-detects from repo (main, master, develop, or origin/HEAD)
   baseBranch: z.string().optional(),
+  // Default repo path - used when repoPath isn't passed to tools
+  // Useful for MCP servers where process.cwd() is the server directory, not the project
+  defaultRepoPath: z.string().optional(),
   integrations: integrationsSchema,
 });
 

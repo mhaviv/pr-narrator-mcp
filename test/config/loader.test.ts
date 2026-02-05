@@ -9,6 +9,7 @@ describe("getConfig", () => {
     delete process.env.TICKET_PATTERN;
     delete process.env.TICKET_LINK;
     delete process.env.PREFIX_STYLE;
+    delete process.env.DEFAULT_REPO_PATH;
   });
 
   afterEach(() => {
@@ -16,6 +17,7 @@ describe("getConfig", () => {
     delete process.env.TICKET_PATTERN;
     delete process.env.TICKET_LINK;
     delete process.env.PREFIX_STYLE;
+    delete process.env.DEFAULT_REPO_PATH;
   });
 
   it("should return defaults when no env vars set", () => {
@@ -46,6 +48,12 @@ describe("getConfig", () => {
     process.env.PREFIX_STYLE = "bracketed";
     const config = getConfig();
     expect(config.commit.prefix.style).toBe("bracketed");
+  });
+
+  it("should parse DEFAULT_REPO_PATH", () => {
+    process.env.DEFAULT_REPO_PATH = "/Users/me/my-project";
+    const config = getConfig();
+    expect(config.defaultRepoPath).toBe("/Users/me/my-project");
   });
 
   it("should combine multiple env vars", () => {

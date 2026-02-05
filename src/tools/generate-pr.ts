@@ -8,13 +8,13 @@ import {
   extractTicketsFromCommits,
   detectBaseBranch,
 } from "../utils/git.js";
-import { formatPrefix, truncate, formatTicketLink, generatePurposeSummary } from "../utils/formatters.js";
+import { formatPrefix, formatTicketLink, generatePurposeSummary } from "../utils/formatters.js";
 
 export const generatePrSchema = z.object({
   repoPath: z
     .string()
     .optional()
-    .describe("Path to the git repository (defaults to current directory)"),
+    .describe("Path to the git repository. Always pass the user's current project/workspace directory."),
   baseBranch: z
     .string()
     .optional()
@@ -128,7 +128,7 @@ export async function generatePr(
   input: GeneratePrInput,
   config: Config
 ): Promise<GeneratePrResult> {
-  const repoPath = input.repoPath || process.cwd();
+  const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
   const warnings: string[] = [];
   const prConfig = config.pr;
   const prTitleConfig = prConfig.title;
@@ -221,10 +221,7 @@ export async function generatePr(
     titleSummary = "[Describe your changes]";
   }
 
-  let title = titlePrefix + titleSummary;
-  if (title.length > prTitleConfig.maxLength) {
-    title = truncate(title, prTitleConfig.maxLength);
-  }
+  const title = titlePrefix + titleSummary;
 
   // === Generate Description ===
   const providedContent: Record<string, string | undefined> = {
@@ -373,7 +370,7 @@ Show ONLY the final title + rewritten description. Never mention "MCP provided" 
     properties: {
       repoPath: {
         type: "string",
-        description: "Path to the git repository (defaults to current directory)",
+        description: "Path to the git repository. IMPORTANT: Always pass the user's current project/workspace directory.",
       },
       baseBranch: {
         type: "string",

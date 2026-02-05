@@ -57,12 +57,13 @@ describe("validateCommitMessage", () => {
       expect(result.errors).toContain("Commit message cannot be empty");
     });
 
-    it("should reject message exceeding max length", async () => {
-      const longMessage = "feat: " + "A".repeat(100);
+    it("should warn about message exceeding max length (soft limit)", async () => {
+      const longMessage = "feat: " + "A".repeat(150);
       const result = await validateCommitMessage({ message: longMessage }, testConfig);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("exceeds"))).toBe(true);
+      // Length is a soft warning, not a hard error
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes("characters"))).toBe(true);
     });
 
     it("should require scope when configured", async () => {

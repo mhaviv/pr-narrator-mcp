@@ -19,6 +19,10 @@ export function getConfig(): Config {
     envConfig.ticketLinkFormat = process.env.TICKET_LINK;
   }
 
+  if (process.env.DEFAULT_REPO_PATH) {
+    envConfig.defaultRepoPath = process.env.DEFAULT_REPO_PATH;
+  }
+
   if (process.env.PREFIX_STYLE) {
     const style = process.env.PREFIX_STYLE;
     if (style === "capitalized" || style === "bracketed") {

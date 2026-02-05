@@ -94,11 +94,18 @@ describe("generateCommitMessage", () => {
       expect(result.validation.warnings.some(w => w.includes("imperative"))).toBe(true);
     });
 
-    it("should truncate long titles", async () => {
-      const longSummary = "A".repeat(100);
+    it("should warn about long titles and provide truncated suggestion", async () => {
+      const longSummary = "A".repeat(150);
       const result = await generateCommitMessage({ summary: longSummary }, testConfig);
 
-      expect(result.title.length).toBeLessThanOrEqual(testConfig.commit.maxTitleLength);
+      // Full title is preserved (not truncated)
+      expect(result.title).toContain(longSummary);
+      // Info about length (soft limit)
+      expect(result.validation.warnings.some(w => w.includes("characters"))).toBe(true);
+      // Truncated suggestion is provided
+      expect(result.validation.truncatedSuggestion).not.toBeNull();
+      expect(result.validation.truncatedSuggestion!.length).toBeLessThanOrEqual(testConfig.commit.maxTitleLength);
+      expect(result.validation.truncatedSuggestion).toContain("...");
     });
 
     it("should include commit body when requested", async () => {

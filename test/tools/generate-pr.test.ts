@@ -79,14 +79,15 @@ describe("generatePr", () => {
       expect(result.title).toContain("Add login");
     });
 
-    it("should truncate long titles", async () => {
+    it("should preserve full title even when long", async () => {
       vi.mocked(getCurrentBranch).mockResolvedValue(
         "feature/PROJ-123-this-is-a-very-long-branch-name-that-should-be-truncated-to-fit-within-limits"
       );
 
       const result = await generatePr({}, testConfig);
 
-      expect(result.title.length).toBeLessThanOrEqual(testConfig.pr.title.maxLength);
+      // Full title preserved, not truncated
+      expect(result.title).toContain("This is a very long branch name");
     });
 
     it("should use placeholder when no summary can be extracted", async () => {

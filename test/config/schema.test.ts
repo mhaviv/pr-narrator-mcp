@@ -5,7 +5,7 @@ describe("configSchema", () => {
   describe("default config", () => {
     it("should have sensible defaults", () => {
       expect(defaultConfig.commit.format).toBe("simple");
-      expect(defaultConfig.commit.maxTitleLength).toBe(72);
+      expect(defaultConfig.commit.maxTitleLength).toBe(100);
       expect(defaultConfig.commit.prefix.enabled).toBe(true);
       expect(defaultConfig.commit.prefix.style).toBe("capitalized");
       expect(defaultConfig.commit.prefix.branchFallback).toBe(true);

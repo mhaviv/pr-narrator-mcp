@@ -9,7 +9,7 @@ export const validateCommitMessageSchema = z.object({
   repoPath: z
     .string()
     .optional()
-    .describe("Path to the git repository (defaults to current directory)"),
+    .describe("Path to the git repository. Always pass the user's current project/workspace directory."),
   message: z
     .string()
     .describe("The commit message to validate"),
@@ -106,11 +106,11 @@ export async function validateCommitMessage(
   if (parsed.title.length > commitConfig.maxTitleLength) {
     issues.push({
       rule: "max-title-length",
-      message: `Title exceeds ${commitConfig.maxTitleLength} characters (${parsed.title.length})`,
-      severity: "error",
+      message: `Title is ${parsed.title.length} characters (target: ~${commitConfig.maxTitleLength}). Long titles may be truncated in some git views.`,
+      severity: "warning",
     });
-    errors.push(
-      `Title exceeds ${commitConfig.maxTitleLength} characters (${parsed.title.length})`
+    warnings.push(
+      `Title is ${parsed.title.length} characters (target: ~${commitConfig.maxTitleLength}). Long titles may be truncated in some git views.`
     );
   }
 
@@ -233,7 +233,7 @@ Checks:
     properties: {
       repoPath: {
         type: "string",
-        description: "Path to the git repository (defaults to current directory)",
+        description: "Path to the git repository. IMPORTANT: Always pass the user's current project/workspace directory.",
       },
       message: {
         type: "string",

@@ -38,8 +38,11 @@ All settings are optional env vars in MCP JSON:
 | `TICKET_PATTERN` | Ticket regex | `[A-Z]+-\\d+` |
 | `TICKET_LINK` | Ticket URL template | `https://jira.example.com/browse/{ticket}` |
 | `PREFIX_STYLE` | Prefix format | `capitalized` or `bracketed` |
+| `DEFAULT_REPO_PATH` | Fallback repo path (single-repo workflows) | `/Users/me/my-project` |
 
 If `BASE_BRANCH` is not set, it auto-detects from the repo (main, master, develop).
+
+**Note on `repoPath`:** All tools accept a `repoPath` parameter. The AI calling the tool should pass the user's current workspace directory. `DEFAULT_REPO_PATH` is only a fallback for single-repo workflows.
 
 ## Tools
 
@@ -59,7 +62,11 @@ PR description includes:
 - **Purpose** - Base summary for AI to enhance
 
 ### generate_commit_message
-Generate commit message from staged changes.
+Prepare commit message context from staged changes.
+
+Two modes:
+- **With `summary` param (recommended):** Returns a ready-to-use commit message with proper prefix/formatting
+- **Without `summary`:** Returns placeholder title + diff + guidelines for AI to compose the message
 
 ### analyze_git_changes
 Analyze staged changes and branch info.

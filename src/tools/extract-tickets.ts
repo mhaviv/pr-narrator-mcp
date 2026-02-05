@@ -12,7 +12,7 @@ export const extractTicketsSchema = z.object({
   repoPath: z
     .string()
     .optional()
-    .describe("Path to the git repository (defaults to current directory)"),
+    .describe("Path to the git repository. Always pass the user's current project/workspace directory."),
   includeCommits: z
     .boolean()
     .optional()
@@ -49,7 +49,7 @@ export async function extractTickets(
   input: ExtractTicketsInput,
   config: Config
 ): Promise<ExtractTicketsResult> {
-  const repoPath = input.repoPath || process.cwd();
+  const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
   const includeCommits = input.includeCommits ?? true;
 
   const ticketPattern = config.ticketPattern;
@@ -165,7 +165,7 @@ Uses TICKET_PATTERN env var to find tickets in:
     properties: {
       repoPath: {
         type: "string",
-        description: "Path to the git repository (defaults to current directory)",
+        description: "Path to the git repository. IMPORTANT: Always pass the user's current project/workspace directory.",
       },
       includeCommits: {
         type: "boolean",
