@@ -259,23 +259,40 @@ export async function generatePr(
 
   const description = descriptionParts.join("\n\n");
 
-  // Extract purpose context for AI to enhance
+  // Extract purpose context for AI to enhance (from ALL commits, not just first)
   let purposeContext: GeneratePrResult["purposeContext"] = null;
   if (commits.length > 0) {
-    const firstCommit = commits[0];
-    const lines = firstCommit.message.split("\n");
-    const commitTitle = lines[0]
+    // Use first commit title as the primary summary
+    const firstLines = commits[0].message.split("\n");
+    const commitTitle = firstLines[0]
       .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
       .replace(/^[A-Z]+-\d+:\s*/i, "")
       .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
       .trim();
     
-    const body = lines.slice(1).join("\n").trim();
-    const commitBullets = body
-      .split("\n")
-      .filter(line => /^[-*]\s+/.test(line.trim()))
-      .map(line => line.trim().replace(/^[-*]\s+/, "").trim())
-      .filter(line => line.length > 0);
+    // Collect bullets from ALL commits
+    const allBullets: string[] = [];
+    for (const commit of commits) {
+      const lines = commit.message.split("\n");
+      const body = lines.slice(1).join("\n").trim();
+      const bullets = body
+        .split("\n")
+        .filter(line => /^[-*]\s+/.test(line.trim()))
+        .map(line => line.trim().replace(/^[-*]\s+/, "").trim())
+        .filter(line => line.length > 0);
+      allBullets.push(...bullets);
+    }
+
+    // If no bullets found in bodies, use commit titles (excluding first) as bullets
+    const commitBullets = allBullets.length > 0
+      ? allBullets
+      : commits.slice(1).map(c => {
+          return c.message.split("\n")[0]
+            .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
+            .replace(/^[A-Z]+-\d+:\s*/i, "")
+            .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
+            .trim();
+        }).filter(t => t.length > 0);
     
     const hasTests = files.some(f => /test|spec|__tests__/i.test(f.path));
     

@@ -7,7 +7,7 @@ import {
   extractTicketsFromCommits,
   getDefaultBranch,
 } from "../utils/git.js";
-import { formatTicketLink, generatePurposeSummary } from "../utils/formatters.js";
+import { generatePurposeSummary } from "../utils/formatters.js";
 
 export const generatePrDescriptionSchema = z.object({
   repoPath: z
@@ -79,10 +79,13 @@ async function generateSectionContent(
 
   if (section.autoPopulate === "extracted") {
     if (context.tickets.length === 0) {
-      return "_No tickets found_";
+      return ""; // No tickets = omit section entirely
     }
+    // Plain URLs, one per line (consistent with generate-pr)
     return context.tickets
-      .map((t) => `- ${formatTicketLink(t, context.ticketLinkFormat)}`)
+      .map((t) => context.ticketLinkFormat
+        ? context.ticketLinkFormat.replace("{ticket}", t)
+        : t)
       .join("\n");
   }
 
@@ -145,8 +148,11 @@ export async function generatePrDescription(
   }
 
   const providedContent: Record<string, string | undefined> = {
+    // Map summary input to both Summary and Purpose section names
     summary: input.summary,
     Summary: input.summary,
+    purpose: input.summary,
+    Purpose: input.summary,
     "test plan": input.testPlan,
     "Test Plan": input.testPlan,
     ...input.additionalSections,

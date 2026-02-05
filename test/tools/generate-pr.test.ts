@@ -180,6 +180,63 @@ describe("generatePr", () => {
       expect(result.purposeContext?.hasTests).toBe(true);
     });
 
+    it("should collect bullets from all commits, not just the first", async () => {
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [
+          {
+            hash: "abc1234",
+            message: `Add login feature
+
+- Add login form component
+- Add validation logic`,
+          },
+          {
+            hash: "def5678",
+            message: `Fix auth edge cases
+
+- Handle expired tokens gracefully
+- Add retry logic for failed auth`,
+          },
+        ],
+        files: [
+          { path: "src/auth/login.ts", additions: 100, deletions: 20 },
+        ],
+        diff: "mock diff",
+      });
+
+      const result = await generatePr({}, testConfig);
+
+      expect(result.purposeContext).not.toBeNull();
+      expect(result.purposeContext?.commitTitle).toBe("Add login feature");
+      // Should have bullets from BOTH commits
+      expect(result.purposeContext?.commitBullets).toHaveLength(4);
+      expect(result.purposeContext?.commitBullets).toContain("Add login form component");
+      expect(result.purposeContext?.commitBullets).toContain("Handle expired tokens gracefully");
+    });
+
+    it("should use commit titles as bullets when no bullet bodies exist", async () => {
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [
+          { hash: "abc1234", message: "Add login feature" },
+          { hash: "def5678", message: "Fix auth edge cases" },
+          { hash: "ghi9012", message: "Add unit tests for auth" },
+        ],
+        files: [
+          { path: "src/auth/login.ts", additions: 100, deletions: 20 },
+        ],
+        diff: "mock diff",
+      });
+
+      const result = await generatePr({}, testConfig);
+
+      expect(result.purposeContext).not.toBeNull();
+      expect(result.purposeContext?.commitTitle).toBe("Add login feature");
+      // Remaining commit titles used as bullets
+      expect(result.purposeContext?.commitBullets).toHaveLength(2);
+      expect(result.purposeContext?.commitBullets).toContain("Fix auth edge cases");
+      expect(result.purposeContext?.commitBullets).toContain("Add unit tests for auth");
+    });
+
     it("should include purposeGuidelines for AI", async () => {
       const result = await generatePr({}, testConfig);
 
