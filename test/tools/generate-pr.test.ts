@@ -71,8 +71,29 @@ describe("generatePr", () => {
       expect(result.title).toContain("Task:");
     });
 
-    it("should extract summary from branch name when not provided", async () => {
+    it("should derive title from oldest commit (main feature intent)", async () => {
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [
+          { hash: "def5678", message: "fix: Handle edge case in login" },
+          { hash: "abc1234", message: "feat: Add login form with validation" },
+        ],
+        files: [{ path: "src/auth/login.ts", additions: 100, deletions: 20 }],
+        diff: "mock diff",
+      });
+
+      const result = await generatePr({}, testConfig);
+
+      // Should use oldest commit (last in array), not newest or branch name
+      expect(result.title).toContain("Add login form with validation");
+    });
+
+    it("should fall back to branch name when no commits", async () => {
       vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-123-add-login");
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [],
+        files: [],
+        diff: "",
+      });
 
       const result = await generatePr({}, testConfig);
 
@@ -80,18 +101,27 @@ describe("generatePr", () => {
     });
 
     it("should preserve full title even when long", async () => {
-      vi.mocked(getCurrentBranch).mockResolvedValue(
-        "feature/PROJ-123-this-is-a-very-long-branch-name-that-should-be-truncated-to-fit-within-limits"
-      );
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [
+          { hash: "abc1234", message: "feat: This is a very long commit message that describes a complex feature with many details and should not be truncated by the tool" },
+        ],
+        files: [{ path: "src/index.ts", additions: 10, deletions: 5 }],
+        diff: "mock diff",
+      });
 
       const result = await generatePr({}, testConfig);
 
       // Full title preserved, not truncated
-      expect(result.title).toContain("This is a very long branch name");
+      expect(result.title).toContain("This is a very long commit message");
     });
 
     it("should use placeholder when no summary can be extracted", async () => {
       vi.mocked(getCurrentBranch).mockResolvedValue(null);
+      vi.mocked(getBranchChanges).mockResolvedValue({
+        commits: [],
+        files: [],
+        diff: "",
+      });
 
       const result = await generatePr({}, testConfig);
 
@@ -174,28 +204,29 @@ describe("generatePr", () => {
 
       // Should include purposeContext for AI to use
       expect(result.purposeContext).not.toBeNull();
-      expect(result.purposeContext?.commitTitle).toBe("Add login feature");
+      expect(result.purposeContext?.commitTitles).toContain("Add login feature");
       expect(result.purposeContext?.commitBullets).toHaveLength(3);
       expect(result.purposeContext?.commitBullets).toContain("Add login form component");
       expect(result.purposeContext?.hasTests).toBe(true);
+      expect(result.purposeContext?.commitCount).toBe(1);
     });
 
     it("should collect bullets from all commits, not just the first", async () => {
       vi.mocked(getBranchChanges).mockResolvedValue({
         commits: [
           {
-            hash: "abc1234",
-            message: `Add login feature
-
-- Add login form component
-- Add validation logic`,
-          },
-          {
             hash: "def5678",
             message: `Fix auth edge cases
 
 - Handle expired tokens gracefully
 - Add retry logic for failed auth`,
+          },
+          {
+            hash: "abc1234",
+            message: `Add login feature
+
+- Add login form component
+- Add validation logic`,
           },
         ],
         files: [
@@ -207,14 +238,16 @@ describe("generatePr", () => {
       const result = await generatePr({}, testConfig);
 
       expect(result.purposeContext).not.toBeNull();
-      expect(result.purposeContext?.commitTitle).toBe("Add login feature");
+      // All commit titles available for AI to synthesize
+      expect(result.purposeContext?.commitTitles).toContain("Add login feature");
+      expect(result.purposeContext?.commitTitles).toContain("Fix auth edge cases");
       // Should have bullets from BOTH commits
       expect(result.purposeContext?.commitBullets).toHaveLength(4);
       expect(result.purposeContext?.commitBullets).toContain("Add login form component");
       expect(result.purposeContext?.commitBullets).toContain("Handle expired tokens gracefully");
     });
 
-    it("should use commit titles as bullets when no bullet bodies exist", async () => {
+    it("should use all commit titles as bullets when no bullet bodies exist", async () => {
       vi.mocked(getBranchChanges).mockResolvedValue({
         commits: [
           { hash: "abc1234", message: "Add login feature" },
@@ -230,11 +263,14 @@ describe("generatePr", () => {
       const result = await generatePr({}, testConfig);
 
       expect(result.purposeContext).not.toBeNull();
-      expect(result.purposeContext?.commitTitle).toBe("Add login feature");
-      // Remaining commit titles used as bullets
-      expect(result.purposeContext?.commitBullets).toHaveLength(2);
-      expect(result.purposeContext?.commitBullets).toContain("Fix auth edge cases");
-      expect(result.purposeContext?.commitBullets).toContain("Add unit tests for auth");
+      // All commit titles available for AI to synthesize
+      expect(result.purposeContext?.commitTitles).toHaveLength(3);
+      expect(result.purposeContext?.commitTitles).toContain("Add login feature");
+      expect(result.purposeContext?.commitTitles).toContain("Fix auth edge cases");
+      expect(result.purposeContext?.commitTitles).toContain("Add unit tests for auth");
+      // When no body bullets, commit titles serve as bullets
+      expect(result.purposeContext?.commitBullets).toHaveLength(3);
+      expect(result.purposeContext?.commitCount).toBe(3);
     });
 
     it("should include purposeGuidelines for AI", async () => {

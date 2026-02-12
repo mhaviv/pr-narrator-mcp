@@ -352,9 +352,48 @@ export function summarizeFileChanges(
 }
 
 /**
+ * Strip conventional commit prefixes, ticket prefixes, and branch-style prefixes
+ * from a commit title to get the clean summary text.
+ */
+export function cleanCommitTitle(title: string): string {
+  return title
+    .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
+    .replace(/^[A-Z]+-\d+:\s*/i, "")
+    .replace(/^\[?[A-Z]+-\d+\]?\s*/i, "")
+    .replace(/^(Task|Bug|BugFix|Feature|Hotfix|Ticket|Release):\s*/i, "")
+    .trim();
+}
+
+/**
+ * Extract a PR title summary from commits.
+ * Uses the oldest commit (last in git-log array) as the main feature description,
+ * since the first commit on a feature branch typically describes the main intent.
+ * Falls back to the most recent commit if the oldest one is generic.
+ */
+export function extractTitleFromCommits(
+  commits: Array<{ hash: string; message: string }>
+): string | null {
+  if (commits.length === 0) return null;
+
+  // Try oldest commit first (last in array - typically the main feature commit)
+  const oldestTitle = cleanCommitTitle(commits[commits.length - 1].message.split("\n")[0]);
+  if (oldestTitle && oldestTitle.length > 5) {
+    return oldestTitle.charAt(0).toUpperCase() + oldestTitle.slice(1);
+  }
+
+  // Fall back to newest commit
+  const newestTitle = cleanCommitTitle(commits[0].message.split("\n")[0]);
+  if (newestTitle && newestTitle.length > 5) {
+    return newestTitle.charAt(0).toUpperCase() + newestTitle.slice(1);
+  }
+
+  return null;
+}
+
+/**
  * Generate a basic purpose/summary from commits
- * Returns just the commit title - the AI calling this tool will enhance it
- * using the purposeContext and purposeGuidelines provided in the response.
+ * Analyzes ALL commits to build a comprehensive placeholder.
+ * The AI calling this tool will enhance it using purposeContext and purposeGuidelines.
  */
 export function generatePurposeSummary(
   commits: Array<{ hash: string; message: string }>,
@@ -365,24 +404,18 @@ export function generatePurposeSummary(
     return "_No changes detected_";
   }
 
-  // Get the first commit title as the base summary
   if (commits.length > 0) {
-    const firstLine = commits[0].message.split("\n")[0];
-    const cleanedTitle = firstLine
-      .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
-      .replace(/^[A-Z]+-\d+:\s*/i, "")
-      .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
-      .trim();
-    
-    if (cleanedTitle) {
-      return convertToPresentTense(cleanedTitle);
+    // Use extractTitleFromCommits for the main summary line
+    const mainTitle = extractTitleFromCommits(commits);
+    if (mainTitle) {
+      return convertToPresentTense(mainTitle);
     }
   }
 
   // Fallback to branch name
   if (branchName) {
     const branchIntent = branchName
-      .replace(/^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style)\//i, "")
+      .replace(/^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style|ticket|release)\//i, "")
       .replace(/[A-Z]+-\d+[-_]?/gi, "")
       .replace(/[-_]/g, " ")
       .replace(/\s+/g, " ")

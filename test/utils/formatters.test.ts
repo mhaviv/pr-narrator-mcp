@@ -292,20 +292,20 @@ describe("formatters", () => {
       expect(summary).toContain("Adds user authentication");
     });
 
-    it("should extract summary from first commit and clean conventional commit prefix", () => {
+    it("should extract summary from oldest commit and clean conventional commit prefix", () => {
       const commits = [
-        { hash: "abc1234", message: "feat(auth): Add login functionality" },
         { hash: "def5678", message: "Add tests" },
+        { hash: "abc1234", message: "feat(auth): Add login functionality" },
       ];
       const files = [
         { path: "src/auth/login.ts", additions: 50, deletions: 10 },
       ];
       const summary = generatePurposeSummary(commits, files, null);
-      // Should convert "Add" to "Adds" (third person present tense)
+      // Should use oldest commit (last in array) and convert "Add" to "Adds"
       expect(summary).toContain("Adds login functionality");
     });
 
-    it("should use first commit title for multiple commits", () => {
+    it("should use oldest commit title for multiple commits", () => {
       const commits = [
         { hash: "abc1234", message: "Update SDK version" },
         { hash: "def5678", message: "Fix config loading" },
@@ -316,8 +316,8 @@ describe("formatters", () => {
         { path: "src/utils.ts", additions: 20, deletions: 5 },
       ];
       const summary = generatePurposeSummary(commits, files, "task/update-sdk");
-      // Now just returns commit title - AI enhances using purposeContext
-      expect(summary).toContain("Updates SDK version");
+      // Uses oldest commit (last in array) as the main intent
+      expect(summary).toContain("Adds new API endpoint");
     });
 
     it("should handle empty commits and files", () => {

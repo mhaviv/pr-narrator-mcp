@@ -74,7 +74,7 @@ export async function generatePrTitle(
 
     // Remove common prefixes
     branchSummary = branchSummary.replace(
-      /^(feature|task|bug|hotfix|fix|chore|refactor)\//i,
+      /^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style|ticket|release)\//i,
       ""
     );
 

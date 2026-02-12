@@ -8,7 +8,7 @@ import {
   extractTicketsFromCommits,
   detectBaseBranch,
 } from "../utils/git.js";
-import { formatPrefix, formatTicketLink, generatePurposeSummary } from "../utils/formatters.js";
+import { formatPrefix, formatTicketLink, generatePurposeSummary, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
 
 export const generatePrSchema = z.object({
   repoPath: z
@@ -55,14 +55,16 @@ export interface GeneratePrResult {
   };
   /** Context for AI to enhance the Purpose section */
   purposeContext: {
-    /** Main commit title - use as the primary summary */
-    commitTitle: string;
-    /** Bullet points from commit body - use to understand scope, don't copy directly */
+    /** All commit titles (cleaned) - use to understand the full scope of changes */
+    commitTitles: string[];
+    /** Bullet points from commit bodies - detailed breakdown of changes */
     commitBullets: string[];
     /** Whether tests were included */
     hasTests: boolean;
     /** Files changed count */
     filesChanged: number;
+    /** Total commit count */
+    commitCount: number;
   } | null;
   /** Guidelines for AI on how to write the Purpose section */
   purposeGuidelines: string;
@@ -194,10 +196,18 @@ export async function generatePr(
   const titlePrefix = formatPrefix(resolvedPrefixConfig, ticket, branchPrefix);
 
   let titleSummary = input.titleSummary || "";
+  if (!titleSummary) {
+    // Prefer commit-derived title (analyzes oldest commit for main intent)
+    const commitTitle = extractTitleFromCommits(commits);
+    if (commitTitle) {
+      titleSummary = commitTitle;
+    }
+  }
   if (!titleSummary && branchName) {
+    // Fall back to branch name
     let branchSummary = branchName;
     branchSummary = branchSummary.replace(
-      /^(feature|task|bug|hotfix|fix|chore|refactor)\//i,
+      /^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style|ticket|release)\//i,
       ""
     );
     if (config.ticketPattern) {
@@ -259,18 +269,15 @@ export async function generatePr(
 
   const description = descriptionParts.join("\n\n");
 
-  // Extract purpose context for AI to enhance (from ALL commits, not just first)
+  // Extract purpose context for AI to enhance (from ALL commits)
   let purposeContext: GeneratePrResult["purposeContext"] = null;
   if (commits.length > 0) {
-    // Use first commit title as the primary summary
-    const firstLines = commits[0].message.split("\n");
-    const commitTitle = firstLines[0]
-      .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
-      .replace(/^[A-Z]+-\d+:\s*/i, "")
-      .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
-      .trim();
+    // Clean ALL commit titles so AI can see the full scope
+    const commitTitles = commits
+      .map(c => cleanCommitTitle(c.message.split("\n")[0]))
+      .filter(t => t.length > 0);
     
-    // Collect bullets from ALL commits
+    // Collect bullet points from ALL commit bodies
     const allBullets: string[] = [];
     for (const commit of commits) {
       const lines = commit.message.split("\n");
@@ -283,62 +290,59 @@ export async function generatePr(
       allBullets.push(...bullets);
     }
 
-    // If no bullets found in bodies, use commit titles (excluding first) as bullets
-    const commitBullets = allBullets.length > 0
-      ? allBullets
-      : commits.slice(1).map(c => {
-          return c.message.split("\n")[0]
-            .replace(/^(feat|fix|chore|docs|test|refactor|style|ci|build|perf)(\([^)]*\))?:\s*/i, "")
-            .replace(/^[A-Z]+-\d+:\s*/i, "")
-            .replace(/^(Task|Bug|BugFix|Feature|Hotfix):\s*/i, "")
-            .trim();
-        }).filter(t => t.length > 0);
+    // Use body bullets if available, otherwise commit titles serve as the breakdown
+    const commitBullets = allBullets.length > 0 ? allBullets : commitTitles;
     
     const hasTests = files.some(f => /test|spec|__tests__/i.test(f.path));
     
     purposeContext = {
-      commitTitle,
+      commitTitles,
       commitBullets,
       hasTests,
       filesChanged,
+      commitCount: commits.length,
     };
   }
 
-  const purposeGuidelines = `You MUST rewrite the Purpose section. The 'description' field has a placeholder.
+  const purposeGuidelines = `You MUST rewrite BOTH the title and Purpose section using ALL the data in purposeContext.
 
-FORMAT RULES:
+CRITICAL: Read ALL commitTitles AND ALL commitBullets to understand the FULL scope.
+Do NOT base the title or description on just one commit - synthesize everything.
+
+TITLE:
+- Rewrite the title to reflect the overall theme of ALL changes
+- Keep the existing prefix (ticket or branch type)
+- Be specific but high-level: "Add News UI tests and align with Home test patterns"
+
+PURPOSE FORMAT:
 - 1-2 changes: Write as prose sentence(s)
-- 3+ changes: Write intro sentence, then bullet points for each change
+- 3+ changes: Write intro sentence summarizing the overall goal, then bullet points
 
 HOW TO WRITE:
-1. Read ALL commitBullets to understand the full scope
-2. Write an intro sentence describing the main feature/goal
-3. If 3+ distinct changes, add bullets (reworded to be concise and high-level)
-4. Use present tense: "Enables...", "Adds...", "Extracts..."
-5. If tests included, add as final bullet: "Includes unit tests for X"
+1. Read ALL commitTitles to understand the breadth of work
+2. Read ALL commitBullets for detailed breakdown
+3. Synthesize into a high-level intro sentence describing the main goal
+4. Add bullets for each distinct area of change (group related commits)
+5. Use present tense: "Adds...", "Updates...", "Fixes..."
+6. If tests included, mention as final bullet: "Includes unit tests for X"
 
-EXAMPLE (3+ changes) - Given these bullets:
-- Extract PR author from GitHub PR metadata
-- Encode author in tag suffix for Azure pipelines  
-- Add threaded failure notification in slack_aggregator.py
-- Look up Slack user ID from env variables
-- Track pinged_author_ts to prevent duplicate pings
-- Add unit tests for notification functionality
+EXAMPLE (3+ changes) - Given commitTitles:
+["Add Slack notification for failed builds", "Extract PR author from metadata", "Add unit tests"]
+and commitBullets:
+["Extract PR author from GitHub PR metadata", "Look up Slack user ID", "Post threaded notification", "Add unit tests"]
 
-WRITE THIS Purpose:
+WRITE:
+Title: "PROJ-123: Add Slack notifications to PR authors on build failure"
+Purpose:
 "Enables automatic Slack notifications to PR authors when builds fail.
 
 - Extracts PR author from GitHub PR metadata
 - Maps GitHub usernames to Slack user IDs for @mentions
 - Posts threaded failure notifications
-- Prevents duplicate notification pings
 - Includes unit tests for notification functionality"
 
-EXAMPLE (1-2 changes):
-"Updates CI pipeline to Xcode 16.1."
-
 NOT THIS:
-- Just "Ping PR author when builds fail" (too short, missing detail)
+- Title or purpose based on only the last commit
 - Raw commit bullets without intro sentence
 - "The MCP provided these points..." (never reference the MCP)`;
 
@@ -367,7 +371,10 @@ export const generatePrTool = {
   description: `Generate a PR title and description.
 
 IMPORTANT: The returned 'description' has a PLACEHOLDER Purpose. You MUST rewrite it using
-purposeContext.commitBullets and purposeGuidelines BEFORE showing to the user.
+purposeContext.commitTitles, purposeContext.commitBullets, and purposeGuidelines BEFORE showing to the user.
+
+You MUST also rewrite the title to reflect ALL changes, not just the branch name.
+Read ALL commitTitles and commitBullets to understand the full scope before writing.
 
 FORMAT:
 - 1-2 changes: prose sentence(s)

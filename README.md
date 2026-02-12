@@ -50,12 +50,12 @@ If `BASE_BRANCH` is not set, it auto-detects from the repo (main, master, develo
 Generate PR title and description with context for AI enhancement.
 
 Returns:
-- `title` - Ready-to-use PR title
-- `description` - PR description with basic Purpose (commit title)
-- `purposeContext` - Commit data (title, bullets, hasTests) for AI to enhance
-- `purposeGuidelines` - Instructions on how to write Purpose in prose style
+- `title` - PR title (placeholder derived from branch/commits - AI should rewrite)
+- `description` - PR description with placeholder Purpose
+- `purposeContext` - ALL commit titles, ALL commit bullets, test info, file count
+- `purposeGuidelines` - Instructions for AI to rewrite title and Purpose from ALL data
 
-**Important:** The Purpose section in `description` is just the commit title. Use `purposeContext` and `purposeGuidelines` to rewrite it in prose style before creating the PR.
+**Important:** Both the title and Purpose are placeholders. The AI must read ALL `purposeContext.commitTitles` and `purposeContext.commitBullets` to synthesize a title and description that reflects the full scope of changes.
 
 PR description includes:
 - **Ticket** - Link extracted from branch name (omitted if none found)
