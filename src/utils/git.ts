@@ -7,6 +7,59 @@ import { resolve, normalize } from "path";
  */
 export const MAX_DIFF_SIZE = 500_000;
 
+/**
+ * Maximum allowed length for user-provided regex patterns (e.g., TICKET_PATTERN)
+ * Prevents overly complex patterns that could cause ReDoS
+ */
+const MAX_REGEX_LENGTH = 200;
+
+/**
+ * Validate a user-provided regex pattern for safety
+ * - Checks that it compiles without error
+ * - Rejects patterns that are too long
+ * - Detects common catastrophic backtracking patterns
+ * 
+ * Returns the compiled RegExp if safe, or null if unsafe
+ */
+export function validateRegexPattern(pattern: string): { safe: boolean; error?: string } {
+  if (!pattern) {
+    return { safe: false, error: "Pattern is empty" };
+  }
+
+  if (pattern.length > MAX_REGEX_LENGTH) {
+    return { safe: false, error: `Pattern exceeds maximum length of ${MAX_REGEX_LENGTH} characters` };
+  }
+
+  // Detect common ReDoS patterns: nested quantifiers like (a+)+, (a*)*,  (a+|b+)+
+  const nestedQuantifiers = /(\([^)]*[+*][^)]*\))[+*]|\(\?:[^)]*[+*][^)]*\)[+*]/;
+  if (nestedQuantifiers.test(pattern)) {
+    return { safe: false, error: "Pattern contains nested quantifiers which may cause catastrophic backtracking" };
+  }
+
+  try {
+    new RegExp(pattern);
+    return { safe: true };
+  } catch (e) {
+    return { safe: false, error: `Invalid regex: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
+ * Safely create a RegExp from a user-provided pattern
+ * Returns null if the pattern is invalid or unsafe
+ */
+export function safeRegex(pattern: string, flags?: string): RegExp | null {
+  const validation = validateRegexPattern(pattern);
+  if (!validation.safe) {
+    return null;
+  }
+  try {
+    return new RegExp(pattern, flags);
+  } catch {
+    return null;
+  }
+}
+
 export interface GitInfo {
   isRepo: boolean;
   currentBranch: string | null;
@@ -414,13 +467,13 @@ export function extractTicketFromBranch(
     return null;
   }
 
-  try {
-    const regex = new RegExp(ticketPattern, "i");
-    const match = branchName.match(regex);
-    return match ? match[0] : null;
-  } catch {
+  const regex = safeRegex(ticketPattern, "i");
+  if (!regex) {
     return null;
   }
+
+  const match = branchName.match(regex);
+  return match ? match[0] : null;
 }
 
 /**
@@ -456,12 +509,16 @@ export async function extractTicketsFromCommits(
     return [];
   }
 
+  const regex = safeRegex(ticketPattern, "gi");
+  if (!regex) {
+    return [];
+  }
+
   try {
     const validatedPath = validateRepoPath(repoPath);
     const git = createGit(validatedPath);
     const logResult = await git.log([`${baseBranch}..HEAD`]);
 
-    const regex = new RegExp(ticketPattern, "gi");
     const tickets = new Set<string>();
 
     for (const commit of logResult.all) {

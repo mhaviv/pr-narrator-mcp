@@ -89,6 +89,18 @@ See current settings.
 | `bug/fix-crash` | `Bug: ` |
 | `main` | (no prefix) |
 
+## Security
+
+This MCP server is **read-only** and **local-only** (stdio transport). It never modifies your git repository, makes network requests, or handles authentication tokens.
+
+**Things to be aware of:**
+
+- **Diffs may contain secrets.** Staged changes and branch diffs are sent to the AI for analysis. If your commits contain API keys or passwords, these will be visible to the model. Use [git-secrets](https://github.com/awslabs/git-secrets) or [gitleaks](https://github.com/gitleaks/gitleaks) to prevent committing sensitive data.
+- **Commit messages are untrusted input.** Git commit messages from collaborators are passed to the AI. Adversarial commit messages could theoretically attempt prompt injection. The read-only nature of this MCP limits impact.
+- **Regex patterns are validated.** The `TICKET_PATTERN` env var is checked for ReDoS safety (catastrophic backtracking, length limits) before use.
+
+For full details, see [SECURITY.md](SECURITY.md).
+
 ## Development
 
 ```bash

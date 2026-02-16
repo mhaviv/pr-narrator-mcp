@@ -1,0 +1,40 @@
+# Source code (dist/ is what gets published)
+src/
+test/
+
+# Config files
+.eslintrc.cjs
+.prettierrc
+.prettierignore
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+
+# CI/CD
+.github/
+
+# Development
+.gitignore
+.npmignore
+CONTRIBUTING.md
+coverage/
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local

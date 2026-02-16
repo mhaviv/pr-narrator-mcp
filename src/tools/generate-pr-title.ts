@@ -4,6 +4,7 @@ import {
   getCurrentBranch,
   extractTicketFromBranch,
   extractBranchPrefix,
+  safeRegex,
 } from "../utils/git.js";
 import { formatPrefix, truncate } from "../utils/formatters.js";
 
@@ -80,11 +81,9 @@ export async function generatePrTitle(
 
     // Remove ticket number
     if (config.ticketPattern) {
-      try {
-        const ticketRegex = new RegExp(config.ticketPattern + "[-_]?", "gi");
+      const ticketRegex = safeRegex(config.ticketPattern + "[-_]?", "gi");
+      if (ticketRegex) {
         branchSummary = branchSummary.replace(ticketRegex, "");
-      } catch {
-        // Invalid regex, skip
       }
     }
 

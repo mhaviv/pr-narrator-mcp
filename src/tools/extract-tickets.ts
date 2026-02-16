@@ -5,6 +5,7 @@ import {
   extractTicketFromBranch,
   extractTicketsFromCommits,
   getDefaultBranch,
+  safeRegex,
 } from "../utils/git.js";
 import { formatTicketLink } from "../utils/formatters.js";
 
@@ -107,8 +108,8 @@ export async function extractTickets(
 
   // Extract from additional text
   if (input.additionalText && ticketPattern) {
-    try {
-      const regex = new RegExp(ticketPattern, "gi");
+    const regex = safeRegex(ticketPattern, "gi");
+    if (regex) {
       const matches = input.additionalText.match(regex);
       if (matches) {
         for (const match of matches) {
@@ -125,8 +126,6 @@ export async function extractTickets(
           }
         }
       }
-    } catch {
-      // Invalid regex, skip
     }
   }
 

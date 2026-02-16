@@ -2,13 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractTickets } from "../../src/tools/extract-tickets.js";
 import { defaultConfig } from "../../src/config/schema.js";
 
-// Mock the git utilities
-vi.mock("../../src/utils/git.js", () => ({
-  getCurrentBranch: vi.fn(),
-  extractTicketFromBranch: vi.fn(),
-  extractTicketsFromCommits: vi.fn(),
-  getDefaultBranch: vi.fn().mockResolvedValue("main"),
-}));
+// Mock the git utilities (keep safeRegex as real implementation since it's pure logic)
+vi.mock("../../src/utils/git.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/utils/git.js")>();
+  return {
+    getCurrentBranch: vi.fn(),
+    extractTicketFromBranch: vi.fn(),
+    extractTicketsFromCommits: vi.fn(),
+    getDefaultBranch: vi.fn().mockResolvedValue("main"),
+    safeRegex: actual.safeRegex,
+    validateRegexPattern: actual.validateRegexPattern,
+  };
+});
 
 import { getCurrentBranch, extractTicketFromBranch, extractTicketsFromCommits } from "../../src/utils/git.js";
 

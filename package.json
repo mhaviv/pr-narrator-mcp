@@ -4,9 +4,22 @@
   "description": "MCP server for generating consistent commit messages and PR content based on your custom criteria",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "pr-narrator-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -38,8 +51,12 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "simple-git": "^3.22.0",
     "zod": "^3.22.4"
   },

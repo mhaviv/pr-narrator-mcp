@@ -1,4 +1,5 @@
 import { configSchema, defaultConfig, type Config } from "./schema.js";
+import { validateRegexPattern } from "../utils/git.js";
 
 /**
  * Get config from MCP env vars
@@ -12,7 +13,12 @@ export function getConfig(): Config {
   }
 
   if (process.env.TICKET_PATTERN) {
-    envConfig.ticketPattern = process.env.TICKET_PATTERN;
+    const validation = validateRegexPattern(process.env.TICKET_PATTERN);
+    if (validation.safe) {
+      envConfig.ticketPattern = process.env.TICKET_PATTERN;
+    } else {
+      console.error(`[pr-narrator] Warning: TICKET_PATTERN is invalid and will be ignored: ${validation.error}`);
+    }
   }
 
   if (process.env.TICKET_LINK) {

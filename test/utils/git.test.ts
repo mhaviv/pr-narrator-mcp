@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   extractTicketFromBranch,
   extractBranchPrefix,
+  validateRegexPattern,
+  safeRegex,
 } from "../../src/utils/git.js";
 
 // Create mock functions
@@ -183,6 +185,121 @@ describe("git utilities", () => {
 
       const result = await getDefaultBranch("/fake/path");
       expect(result).toBe("main");
+    });
+  });
+
+  describe("validateRegexPattern", () => {
+    it("should accept a valid simple pattern", () => {
+      const result = validateRegexPattern("[A-Z]+-\\d+");
+      expect(result.safe).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it("should accept a valid Jira-style pattern", () => {
+      const result = validateRegexPattern("PROJ-\\d+");
+      expect(result.safe).toBe(true);
+    });
+
+    it("should accept a pattern with alternation", () => {
+      const result = validateRegexPattern("PROJ-\\d+|TEAM-\\d+");
+      expect(result.safe).toBe(true);
+    });
+
+    it("should reject an empty pattern", () => {
+      const result = validateRegexPattern("");
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("empty");
+    });
+
+    it("should reject a pattern exceeding max length", () => {
+      const longPattern = "A".repeat(201);
+      const result = validateRegexPattern(longPattern);
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("maximum length");
+    });
+
+    it("should accept a pattern at exactly max length", () => {
+      const pattern = "A".repeat(200);
+      const result = validateRegexPattern(pattern);
+      expect(result.safe).toBe(true);
+    });
+
+    it("should reject nested quantifiers (ReDoS risk: (a+)+)", () => {
+      const result = validateRegexPattern("(a+)+");
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("nested quantifiers");
+    });
+
+    it("should reject nested quantifiers (ReDoS risk: (a*)*)", () => {
+      const result = validateRegexPattern("(a*)*");
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("nested quantifiers");
+    });
+
+    it("should reject nested quantifiers (ReDoS risk: (a+|b+)+)", () => {
+      const result = validateRegexPattern("(a+|b+)+");
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("nested quantifiers");
+    });
+
+    it("should reject an invalid regex syntax", () => {
+      const result = validateRegexPattern("[invalid");
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("Invalid regex");
+    });
+
+    it("should reject unclosed groups", () => {
+      const result = validateRegexPattern("(abc");
+      expect(result.safe).toBe(false);
+      expect(result.error).toContain("Invalid regex");
+    });
+  });
+
+  describe("safeRegex", () => {
+    it("should return a RegExp for a valid pattern", () => {
+      const result = safeRegex("[A-Z]+-\\d+", "gi");
+      expect(result).toBeInstanceOf(RegExp);
+      expect(result?.flags).toContain("g");
+      expect(result?.flags).toContain("i");
+    });
+
+    it("should return null for an invalid pattern", () => {
+      const result = safeRegex("[invalid");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for a ReDoS-vulnerable pattern", () => {
+      const result = safeRegex("(a+)+", "i");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for an empty pattern", () => {
+      const result = safeRegex("");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for an overly long pattern", () => {
+      const result = safeRegex("A".repeat(201));
+      expect(result).toBeNull();
+    });
+
+    it("should work correctly when used for matching", () => {
+      const regex = safeRegex("PROJ-\\d+", "i");
+      expect(regex).not.toBeNull();
+      const match = "feature/PROJ-1234-add-login".match(regex!);
+      expect(match?.[0]).toBe("PROJ-1234");
+    });
+  });
+
+  describe("extractTicketFromBranch with safeRegex", () => {
+    it("should return null for ReDoS-vulnerable ticket pattern", () => {
+      const result = extractTicketFromBranch("feature/test", "(a+)+");
+      expect(result).toBe(null);
+    });
+
+    it("should return null for overly long ticket pattern", () => {
+      const result = extractTicketFromBranch("feature/test", "A".repeat(201));
+      expect(result).toBe(null);
     });
   });
 });

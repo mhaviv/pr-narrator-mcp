@@ -77,4 +77,38 @@ describe("getConfig", () => {
     expect(config.commit.maxTitleLength).toBe(defaultConfig.commit.maxTitleLength);
     expect(config.commit.rules.imperativeMood).toBe(defaultConfig.commit.rules.imperativeMood);
   });
+
+  describe("TICKET_PATTERN regex safety", () => {
+    it("should accept a safe ticket pattern", () => {
+      process.env.TICKET_PATTERN = "[A-Z]+-\\d+";
+      const config = getConfig();
+      expect(config.ticketPattern).toBe("[A-Z]+-\\d+");
+    });
+
+    it("should reject a ReDoS-vulnerable pattern (nested quantifiers)", () => {
+      process.env.TICKET_PATTERN = "(a+)+";
+      const config = getConfig();
+      expect(config.ticketPattern).toBeUndefined();
+    });
+
+    it("should reject an overly long pattern", () => {
+      process.env.TICKET_PATTERN = "A".repeat(201);
+      const config = getConfig();
+      expect(config.ticketPattern).toBeUndefined();
+    });
+
+    it("should reject an invalid regex pattern", () => {
+      process.env.TICKET_PATTERN = "[invalid";
+      const config = getConfig();
+      expect(config.ticketPattern).toBeUndefined();
+    });
+
+    it("should still load other env vars when pattern is rejected", () => {
+      process.env.TICKET_PATTERN = "(a+)+";
+      process.env.BASE_BRANCH = "develop";
+      const config = getConfig();
+      expect(config.ticketPattern).toBeUndefined();
+      expect(config.baseBranch).toBe("develop");
+    });
+  });
 });

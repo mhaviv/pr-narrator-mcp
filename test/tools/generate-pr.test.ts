@@ -2,21 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generatePr } from "../../src/tools/generate-pr.js";
 import { defaultConfig } from "../../src/config/schema.js";
 
-// Mock the git utilities
-vi.mock("../../src/utils/git.js", () => ({
-  getCurrentBranch: vi.fn(),
-  getBranchChanges: vi.fn(),
-  extractTicketFromBranch: vi.fn(),
-  extractBranchPrefix: vi.fn(),
-  extractTicketsFromCommits: vi.fn(),
-  detectBaseBranch: vi.fn().mockResolvedValue({
-    branch: "main",
-    isConfigured: false,
-    alternatives: [],
-    isAmbiguous: false,
-  }),
-  validateRepoPath: vi.fn((path) => path || process.cwd()),
-}));
+// Mock the git utilities (keep safeRegex as real implementation since it's pure logic)
+vi.mock("../../src/utils/git.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/utils/git.js")>();
+  return {
+    getCurrentBranch: vi.fn(),
+    getBranchChanges: vi.fn(),
+    extractTicketFromBranch: vi.fn(),
+    extractBranchPrefix: vi.fn(),
+    extractTicketsFromCommits: vi.fn(),
+    detectBaseBranch: vi.fn().mockResolvedValue({
+      branch: "main",
+      isConfigured: false,
+      alternatives: [],
+      isAmbiguous: false,
+    }),
+    validateRepoPath: vi.fn((path: string) => path || process.cwd()),
+    safeRegex: actual.safeRegex,
+    validateRegexPattern: actual.validateRegexPattern,
+  };
+});
 
 import {
   getCurrentBranch,

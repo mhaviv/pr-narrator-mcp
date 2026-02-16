@@ -7,6 +7,7 @@ import {
   extractBranchPrefix,
   extractTicketsFromCommits,
   detectBaseBranch,
+  safeRegex,
 } from "../utils/git.js";
 import { formatPrefix, formatTicketLink, generatePurposeSummary, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
 
@@ -211,11 +212,9 @@ export async function generatePr(
       ""
     );
     if (config.ticketPattern) {
-      try {
-        const ticketRegex = new RegExp(config.ticketPattern + "[-_]?", "gi");
+      const ticketRegex = safeRegex(config.ticketPattern + "[-_]?", "gi");
+      if (ticketRegex) {
         branchSummary = branchSummary.replace(ticketRegex, "");
-      } catch {
-        // Invalid regex
       }
     }
     titleSummary = branchSummary
