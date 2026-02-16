@@ -37,7 +37,11 @@ Add to `~/.cursor/mcp.json`:
 
 ### Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to your Claude Desktop config:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -52,6 +56,52 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
     }
   }
 }
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "pr-narrator": {
+      "command": "npx",
+      "args": ["-y", "pr-narrator-mcp"],
+      "env": {
+        "BASE_BRANCH": "develop",
+        "TICKET_PATTERN": "[A-Z]+-\\d+"
+      }
+    }
+  }
+}
+```
+
+### VS Code (GitHub Copilot)
+
+Add to `.vscode/mcp.json` in your project:
+
+```json
+{
+  "servers": {
+    "pr-narrator": {
+      "command": "npx",
+      "args": ["-y", "pr-narrator-mcp"],
+      "env": {
+        "BASE_BRANCH": "develop",
+        "TICKET_PATTERN": "[A-Z]+-\\d+"
+      }
+    }
+  }
+}
+```
+
+### Other MCP Clients
+
+Any MCP client that supports stdio transport can use this server. The command is:
+
+```bash
+npx -y pr-narrator-mcp
 ```
 
 That's it! No config files needed. All env vars are optional.
