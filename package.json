@@ -1,6 +1,6 @@
 {
   "name": "pr-narrator-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for generating consistent commit messages and PR content based on your custom criteria",
   "type": "module",
   "main": "dist/index.js",
