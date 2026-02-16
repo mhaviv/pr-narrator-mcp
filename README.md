@@ -1,15 +1,24 @@
 # pr-narrator-mcp
 
 [![npm version](https://img.shields.io/npm/v/pr-narrator-mcp.svg)](https://www.npmjs.com/package/pr-narrator-mcp)
+[![CI](https://github.com/mhaviv/pr-narrator-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/mhaviv/pr-narrator-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > Generate consistent commit messages and PR content automatically.
 
 An MCP server that generates commit messages and PR descriptions based on your git changes.
 
+## Install
+
+```bash
+npx pr-narrator-mcp
+```
+
 ## Quick Start
 
-Add to your MCP settings (`~/.cursor/mcp.json`):
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -26,7 +35,26 @@ Add to your MCP settings (`~/.cursor/mcp.json`):
 }
 ```
 
-That's it! No config files needed.
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "pr-narrator": {
+      "command": "npx",
+      "args": ["-y", "pr-narrator-mcp"],
+      "env": {
+        "BASE_BRANCH": "develop",
+        "TICKET_PATTERN": "[A-Z]+-\\d+"
+      }
+    }
+  }
+}
+```
+
+That's it! No config files needed. All env vars are optional.
 
 ## Settings
 
