@@ -48,7 +48,7 @@ export interface GeneratePrDescriptionResult {
   };
 }
 
-async function generateSectionContent(
+function generateSectionContent(
   section: PrSection,
   context: {
     commits: Array<{ hash: string; message: string }>;
@@ -58,14 +58,16 @@ async function generateSectionContent(
     providedContent: Record<string, string | undefined>;
     branchName: string | null;
   }
-): Promise<string> {
+): string {
   const sectionNameLower = section.name.toLowerCase();
 
-  if (context.providedContent[section.name]) {
-    return context.providedContent[section.name]!;
+  const byName = context.providedContent[section.name];
+  if (byName) {
+    return byName;
   }
-  if (context.providedContent[sectionNameLower]) {
-    return context.providedContent[sectionNameLower]!;
+  const byLower = context.providedContent[sectionNameLower];
+  if (byLower) {
+    return byLower;
   }
 
   if (section.autoPopulate === "commits") {
@@ -163,7 +165,7 @@ export async function generatePrDescription(
   const sections: GeneratedSection[] = [];
 
   for (const sectionConfig of prConfig.sections) {
-    const content = await generateSectionContent(sectionConfig, {
+    const content = generateSectionContent(sectionConfig, {
       commits,
       files,
       tickets,

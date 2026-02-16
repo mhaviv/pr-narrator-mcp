@@ -79,10 +79,10 @@ function parseCommitMessage(message: string): {
 /**
  * Validate a commit message against configuration rules
  */
-export async function validateCommitMessage(
+export function validateCommitMessage(
   input: ValidateCommitMessageInput,
   config: Config
-): Promise<ValidateCommitMessageResult> {
+): ValidateCommitMessageResult {
   const message = input.message.trim();
 
   const issues: ValidationIssue[] = [];

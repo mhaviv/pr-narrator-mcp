@@ -18,10 +18,10 @@ export interface GetConfigResult {
 /**
  * Get the current configuration
  */
-export async function getConfig(
+export function getConfig(
   _input: GetConfigInput,
   config: Config
-): Promise<GetConfigResult> {
+): GetConfigResult {
   // Check if any env vars were set
   const hasEnvConfig = !!(
     process.env.BASE_BRANCH ||

@@ -9,7 +9,7 @@ import {
   detectBaseBranch,
   safeRegex,
 } from "../utils/git.js";
-import { formatPrefix, formatTicketLink, generatePurposeSummary, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
+import { formatPrefix, generatePurposeSummary, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
 
 export const generatePrSchema = z.object({
   repoPath: z
@@ -72,7 +72,7 @@ export interface GeneratePrResult {
   warnings: string[];
 }
 
-async function generateSectionContent(
+function generateSectionContent(
   section: PrSection,
   context: {
     commits: Array<{ hash: string; message: string }>;
@@ -82,14 +82,16 @@ async function generateSectionContent(
     providedContent: Record<string, string | undefined>;
     branchName: string | null;
   }
-): Promise<string> {
+): string {
   const sectionNameLower = section.name.toLowerCase();
 
-  if (context.providedContent[section.name]) {
-    return context.providedContent[section.name]!;
+  const byName = context.providedContent[section.name];
+  if (byName) {
+    return byName;
   }
-  if (context.providedContent[sectionNameLower]) {
-    return context.providedContent[sectionNameLower]!;
+  const byLower = context.providedContent[sectionNameLower];
+  if (byLower) {
+    return byLower;
   }
 
   if (section.autoPopulate === "commits") {
@@ -248,7 +250,7 @@ export async function generatePr(
   const files = branchChanges?.files ?? [];
 
   for (const sectionConfig of prConfig.sections) {
-    const content = await generateSectionContent(sectionConfig, {
+    const content = generateSectionContent(sectionConfig, {
       commits,
       files,
       tickets,

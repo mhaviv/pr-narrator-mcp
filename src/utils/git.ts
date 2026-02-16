@@ -1,4 +1,4 @@
-import simpleGit, { SimpleGit, DiffResult } from "simple-git";
+import simpleGit, { SimpleGit } from "simple-git";
 import { resolve, normalize } from "path";
 
 /**

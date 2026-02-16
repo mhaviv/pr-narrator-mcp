@@ -8,7 +8,8 @@ import { createRequire } from "module";
 
 // Read version from package.json to avoid version drift
 const require = createRequire(import.meta.url);
-const { version } = require("../package.json");
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+const { version } = require("../package.json") as { version: string };
 
 // Import config
 import { getConfig } from "./config/loader.js";
@@ -129,7 +130,7 @@ const server = new Server(
 );
 
 // Handle tool listing
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+server.setRequestHandler(ListToolsRequestSchema, () => {
   return {
     tools,
   };
@@ -143,7 +144,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case "get_config": {
         const input = getConfigSchema.parse(args || {});
-        const result = await getConfigHandler(input, config);
+        const result = getConfigHandler(input, config);
         return {
           content: [
             {
@@ -182,7 +183,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "validate_commit_message": {
         const input = validateCommitMessageSchema.parse(args || {});
-        const result = await validateCommitMessage(input, config);
+        const result = validateCommitMessage(input, config);
         return {
           content: [
             {
@@ -278,8 +279,8 @@ async function shutdown(signal: string) {
 // Start the server
 async function main() {
   // Register signal handlers for graceful shutdown
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   // Handle uncaught exceptions
   process.on("uncaughtException", (error) => {

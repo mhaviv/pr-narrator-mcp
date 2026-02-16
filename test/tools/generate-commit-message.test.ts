@@ -8,7 +8,7 @@ vi.mock("../../src/utils/git.js", () => ({
   getCurrentBranch: vi.fn(),
   extractTicketFromBranch: vi.fn(),
   extractBranchPrefix: vi.fn(),
-  validateRepoPath: vi.fn((path) => path || process.cwd()),
+  validateRepoPath: vi.fn((path: string) => path || process.cwd()),
 }));
 
 import {
