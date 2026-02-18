@@ -3,6 +3,7 @@ import {
   getGitInfo,
   getStagedChanges,
   getBranchChanges,
+  getWorkingTreeStatus,
   extractTicketFromBranch,
   extractBranchPrefix,
   extractTicketsFromCommits,
@@ -71,6 +72,18 @@ export interface AnalyzeGitChangesResult {
     diff?: string;
   };
 
+  // Working tree (uncommitted local changes)
+  workingTree: {
+    hasChanges: boolean;
+    modifiedCount: number;
+    untrackedCount: number;
+    deletedCount: number;
+    totalCount: number;
+    modified: string[];
+    untracked: string[];
+    deleted: string[];
+  };
+
   // Errors
   errors: string[];
 }
@@ -115,6 +128,16 @@ export async function analyzeGitChanges(
         files: [],
         summary: "Not a git repository",
       },
+      workingTree: {
+        hasChanges: false,
+        modifiedCount: 0,
+        untrackedCount: 0,
+        deletedCount: 0,
+        totalCount: 0,
+        modified: [],
+        untracked: [],
+        deleted: [],
+      },
       errors: ["Not a git repository"],
     };
   }
@@ -126,7 +149,7 @@ export async function analyzeGitChanges(
     ? extractTicketFromBranch(currentBranch, config.ticketPattern)
     : null;
   const branchPrefix = currentBranch
-    ? extractBranchPrefix(currentBranch)
+    ? extractBranchPrefix(currentBranch, config.branchPrefixes)
     : null;
 
   // Get all tickets from commits
@@ -154,11 +177,14 @@ export async function analyzeGitChanges(
       additions: f.additions,
       deletions: f.deletions,
     })),
-    summary: summarizeFileChanges(stagedFiles),
+    summary: summarizeFileChanges(stagedFiles, { includeStats: config.commit.includeStats }),
     suggestedType: inferCommitType(stagedFilePaths),
     suggestedScope: inferScope(stagedFilePaths, config.commit.scopes),
     ...(includeFullDiff && stagedChanges ? { diff: stagedChanges.diff } : {}),
   };
+
+  // Get working tree status (unstaged + untracked)
+  const workingTreeStatus = await getWorkingTreeStatus(repoPath);
 
   // Get branch changes
   const branchChanges = await getBranchChanges(repoPath, baseBranch);
@@ -176,8 +202,19 @@ export async function analyzeGitChanges(
       additions: f.additions,
       deletions: f.deletions,
     })),
-    summary: summarizeFileChanges(branchFiles),
+    summary: summarizeFileChanges(branchFiles, { includeStats: config.commit.includeStats }),
     ...(includeFullDiff && branchChanges ? { diff: branchChanges.diff } : {}),
+  };
+
+  const workingTree = {
+    hasChanges: workingTreeStatus.totalUncommitted > 0,
+    modifiedCount: workingTreeStatus.modifiedCount,
+    untrackedCount: workingTreeStatus.untrackedCount,
+    deletedCount: workingTreeStatus.deletedCount,
+    totalCount: workingTreeStatus.totalUncommitted,
+    modified: workingTreeStatus.modified,
+    untracked: workingTreeStatus.untracked,
+    deleted: workingTreeStatus.deleted,
   };
 
   return {
@@ -189,6 +226,7 @@ export async function analyzeGitChanges(
     allTickets,
     staged,
     branch,
+    workingTree,
     errors,
   };
 }
@@ -204,6 +242,7 @@ Returns:
 - Branch prefix (task/, bug/, feature/, etc.)
 - Staged changes with file list and suggested commit type/scope
 - Branch changes since base branch with commit history
+- Working tree status (unstaged modified, untracked, and deleted files)
 - All tickets found in branch name and commits
 
 Use this before generating commits or PRs to understand the changes.`,

@@ -7,6 +7,7 @@ vi.mock("../../src/utils/git.js", () => ({
   getGitInfo: vi.fn(),
   getStagedChanges: vi.fn(),
   getBranchChanges: vi.fn(),
+  getWorkingTreeStatus: vi.fn(),
   getCurrentBranch: vi.fn(),
   extractTicketFromBranch: vi.fn(),
   extractBranchPrefix: vi.fn(),
@@ -19,6 +20,7 @@ import {
   getGitInfo,
   getStagedChanges,
   getBranchChanges,
+  getWorkingTreeStatus,
   extractTicketFromBranch,
   extractBranchPrefix,
   extractTicketsFromCommits,
@@ -49,6 +51,7 @@ describe("analyzeGitChanges", () => {
 
       expect(result.isRepo).toBe(false);
       expect(result.errors).toContain("Not a git repository");
+      expect(result.workingTree.hasChanges).toBe(false);
     });
   });
 
@@ -69,6 +72,15 @@ describe("analyzeGitChanges", () => {
         commits: [],
         files: [],
         diff: "",
+      });
+      vi.mocked(getWorkingTreeStatus).mockResolvedValue({
+        modified: [],
+        untracked: [],
+        deleted: [],
+        modifiedCount: 0,
+        untrackedCount: 0,
+        deletedCount: 0,
+        totalUncommitted: 0,
       });
       vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-123");
       vi.mocked(extractBranchPrefix).mockReturnValue("feature");
@@ -239,6 +251,68 @@ describe("analyzeGitChanges", () => {
         const result = await analyzeGitChanges({}, testConfig);
 
         expect(result.staged.suggestedScope).toBe("auth");
+      });
+    });
+
+    describe("working tree", () => {
+      it("should report unstaged modified files", async () => {
+        vi.mocked(getWorkingTreeStatus).mockResolvedValue({
+          modified: ["src/utils.ts", "README.md"],
+          untracked: [],
+          deleted: [],
+          modifiedCount: 2,
+          untrackedCount: 0,
+          deletedCount: 0,
+          totalUncommitted: 2,
+        });
+
+        const result = await analyzeGitChanges({}, testConfig);
+
+        expect(result.workingTree.hasChanges).toBe(true);
+        expect(result.workingTree.modifiedCount).toBe(2);
+        expect(result.workingTree.modified).toEqual(["src/utils.ts", "README.md"]);
+      });
+
+      it("should report untracked files", async () => {
+        vi.mocked(getWorkingTreeStatus).mockResolvedValue({
+          modified: [],
+          untracked: ["new-file.ts"],
+          deleted: [],
+          modifiedCount: 0,
+          untrackedCount: 1,
+          deletedCount: 0,
+          totalUncommitted: 1,
+        });
+
+        const result = await analyzeGitChanges({}, testConfig);
+
+        expect(result.workingTree.hasChanges).toBe(true);
+        expect(result.workingTree.untrackedCount).toBe(1);
+        expect(result.workingTree.untracked).toEqual(["new-file.ts"]);
+      });
+
+      it("should report deleted files", async () => {
+        vi.mocked(getWorkingTreeStatus).mockResolvedValue({
+          modified: [],
+          untracked: [],
+          deleted: ["old-file.ts"],
+          modifiedCount: 0,
+          untrackedCount: 0,
+          deletedCount: 1,
+          totalUncommitted: 1,
+        });
+
+        const result = await analyzeGitChanges({}, testConfig);
+
+        expect(result.workingTree.hasChanges).toBe(true);
+        expect(result.workingTree.deletedCount).toBe(1);
+      });
+
+      it("should report no changes when working tree is clean", async () => {
+        const result = await analyzeGitChanges({}, testConfig);
+
+        expect(result.workingTree.hasChanges).toBe(false);
+        expect(result.workingTree.totalCount).toBe(0);
       });
     });
   });

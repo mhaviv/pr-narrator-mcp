@@ -157,7 +157,7 @@ export async function generatePr(
   const ticket = branchName
     ? extractTicketFromBranch(branchName, config.ticketPattern)
     : null;
-  const branchPrefix = branchName ? extractBranchPrefix(branchName) : null;
+  const branchPrefix = branchName ? extractBranchPrefix(branchName, config.branchPrefixes) : null;
 
   // Get branch changes
   const branchChanges = await getBranchChanges(repoPath, baseBranch);

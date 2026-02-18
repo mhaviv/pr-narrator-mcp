@@ -3,21 +3,17 @@ import { getConfig } from "../../src/config/loader.js";
 import { defaultConfig } from "../../src/config/schema.js";
 
 describe("getConfig", () => {
+  const envKeys = [
+    "BASE_BRANCH", "TICKET_PATTERN", "TICKET_LINK",
+    "PREFIX_STYLE", "DEFAULT_REPO_PATH", "INCLUDE_STATS", "BRANCH_PREFIXES",
+  ];
+
   beforeEach(() => {
-    // Clear env vars
-    delete process.env.BASE_BRANCH;
-    delete process.env.TICKET_PATTERN;
-    delete process.env.TICKET_LINK;
-    delete process.env.PREFIX_STYLE;
-    delete process.env.DEFAULT_REPO_PATH;
+    for (const key of envKeys) delete process.env[key];
   });
 
   afterEach(() => {
-    delete process.env.BASE_BRANCH;
-    delete process.env.TICKET_PATTERN;
-    delete process.env.TICKET_LINK;
-    delete process.env.PREFIX_STYLE;
-    delete process.env.DEFAULT_REPO_PATH;
+    for (const key of envKeys) delete process.env[key];
   });
 
   it("should return defaults when no env vars set", () => {
@@ -76,6 +72,32 @@ describe("getConfig", () => {
     expect(config.baseBranch).toBe("develop");
     expect(config.commit.maxTitleLength).toBe(defaultConfig.commit.maxTitleLength);
     expect(config.commit.rules.imperativeMood).toBe(defaultConfig.commit.rules.imperativeMood);
+  });
+
+  it("should parse INCLUDE_STATS=false", () => {
+    process.env.INCLUDE_STATS = "false";
+    const config = getConfig();
+    expect(config.commit.includeStats).toBe(false);
+  });
+
+  it("should parse INCLUDE_STATS=true", () => {
+    process.env.INCLUDE_STATS = "true";
+    const config = getConfig();
+    expect(config.commit.includeStats).toBe(true);
+  });
+
+  it("should parse BRANCH_PREFIXES", () => {
+    process.env.BRANCH_PREFIXES = "deploy, staging, research";
+    const config = getConfig();
+    expect(config.branchPrefixes).toEqual(["deploy", "staging", "research"]);
+  });
+
+  it("should not lose INCLUDE_STATS when PREFIX_STYLE is also set", () => {
+    process.env.INCLUDE_STATS = "false";
+    process.env.PREFIX_STYLE = "bracketed";
+    const config = getConfig();
+    expect(config.commit.includeStats).toBe(false);
+    expect(config.commit.prefix.style).toBe("bracketed");
   });
 
   describe("TICKET_PATTERN regex safety", () => {

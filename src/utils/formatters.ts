@@ -315,40 +315,263 @@ export function isMainBranch(branchName: string | null): boolean {
   return mainBranches.includes(branchName.toLowerCase());
 }
 
+export interface SummarizeOptions {
+  /** Whether to include file counts and +/- line stats. Defaults to true. */
+  includeStats?: boolean;
+}
+
 /**
- * Summarize file changes for context
+ * Summarize file changes for context, with categorized breakdown
  */
 export function summarizeFileChanges(
-  files: Array<{ path: string; additions: number; deletions: number }>
+  files: Array<{ path: string; additions: number; deletions: number }>,
+  options?: SummarizeOptions
 ): string {
   if (files.length === 0) {
     return "No files changed";
   }
 
+  const includeStats = options?.includeStats ?? true;
   const summary: string[] = [];
 
-  // Group by extension
-  const byExtension = new Map<string, number>();
+  // Group by extension with category labels
+  const byExtension = new Map<string, { count: number; category: string }>();
   for (const file of files) {
-    const ext = file.path.split(".").pop() || "other";
-    byExtension.set(ext, (byExtension.get(ext) || 0) + 1);
+    const ext = file.path.split(".").pop()?.toLowerCase() || "other";
+    const existing = byExtension.get(ext);
+    if (existing) {
+      existing.count++;
+    } else {
+      byExtension.set(ext, { count: 1, category: getFileCategory(file.path) });
+    }
   }
 
-  // Top extensions
-  const topExtensions = Array.from(byExtension.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([ext, count]) => `${count} .${ext}`)
-    .join(", ");
+  // Sorted by count descending
+  const sorted = Array.from(byExtension.entries())
+    .sort((a, b) => b[1].count - a[1].count);
 
-  summary.push(`${files.length} file(s) changed (${topExtensions})`);
+  if (includeStats) {
+    const brief = sorted
+      .slice(0, 3)
+      .map(([ext, { count }]) => `${count} .${ext}`)
+      .join(", ");
+    summary.push(`${files.length} file(s) changed (${brief})`);
+  }
 
-  // Add/delete summary
-  const totalAdd = files.reduce((sum, f) => sum + f.additions, 0);
-  const totalDel = files.reduce((sum, f) => sum + f.deletions, 0);
-  summary.push(`+${totalAdd} -${totalDel} lines`);
+  // Categorized breakdown (always shown for >3 files)
+  if (files.length > 3) {
+    const breakdown = sorted
+      .map(([ext, { count, category }]) => `  ${count} .${ext} (${category})`)
+      .join("\n");
+    summary.push(breakdown);
+  }
+
+  if (includeStats) {
+    const totalAdd = files.reduce((sum, f) => sum + f.additions, 0);
+    const totalDel = files.reduce((sum, f) => sum + f.deletions, 0);
+    summary.push(`+${totalAdd} -${totalDel} lines`);
+  }
 
   return summary.join("\n");
+}
+
+/**
+ * Generate a best-effort commit title from file paths and change stats
+ * when no summary is provided. Produces a descriptive scope-based title
+ * without file counts — those belong in metadata, not the title.
+ */
+export function generateBestEffortTitle(
+  files: Array<{ path: string; additions: number; deletions: number }>
+): string {
+  if (files.length === 0) return "Update project";
+  if (files.length === 1) {
+    return `Update ${files[0].path.split("/").pop()}`;
+  }
+
+  // Determine the dominant action from add/delete ratios
+  const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+  const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+  const allNew = files.every(f => f.deletions === 0 && f.additions > 0);
+  const allDeleted = files.every(f => f.additions === 0 && f.deletions > 0);
+
+  let verb = "Update";
+  if (allNew) verb = "Add";
+  else if (allDeleted) verb = "Remove";
+  else if (totalDel > totalAdd * 2) verb = "Refactor";
+
+  // Find common directory (skip generic root dirs)
+  const dirs = files.map(f => {
+    const parts = f.path.split("/");
+    parts.pop();
+    return parts;
+  });
+  const commonParts: string[] = [];
+  if (dirs.length > 0) {
+    for (let i = 0; i < dirs[0].length; i++) {
+      const segment = dirs[0][i];
+      if (dirs.every(d => d[i] === segment)) {
+        commonParts.push(segment);
+      } else {
+        break;
+      }
+    }
+  }
+  const scope = commonParts.filter(p => !["src", "lib", "app"].includes(p)).join("/");
+
+  // Determine dominant file type
+  const extCounts = new Map<string, number>();
+  for (const f of files) {
+    const ext = f.path.split(".").pop()?.toLowerCase() || "";
+    extCounts.set(ext, (extCounts.get(ext) || 0) + 1);
+  }
+  const sortedExts = Array.from(extCounts.entries()).sort((a, b) => b[1] - a[1]);
+  const dominantExt = sortedExts[0]?.[0] || "";
+  const dominantCategory = FILE_CATEGORIES[dominantExt] || dominantExt;
+
+  if (scope) {
+    return `${verb} ${scope}`;
+  }
+
+  if (dominantCategory && sortedExts[0]?.[1] === files.length) {
+    return `${verb} ${dominantCategory}`;
+  }
+
+  if (dominantCategory) {
+    return `${verb} ${dominantCategory} and related files`;
+  }
+
+  return `${verb} project files`;
+}
+
+/**
+ * File extension to human-readable category mapping
+ */
+const FILE_CATEGORIES: Record<string, string> = {
+  swift: "Swift source",
+  kt: "Kotlin source",
+  java: "Java source",
+  ts: "TypeScript",
+  tsx: "TypeScript/React",
+  js: "JavaScript",
+  jsx: "JavaScript/React",
+  py: "Python",
+  rb: "Ruby",
+  go: "Go",
+  rs: "Rust",
+  cs: "C#",
+  cpp: "C++",
+  c: "C",
+  h: "C/C++ header",
+  m: "Objective-C",
+  mm: "Objective-C++",
+  pbxproj: "Xcode project config",
+  xcconfig: "Xcode build settings",
+  xcscheme: "Xcode scheme",
+  xcworkspacedata: "Xcode workspace",
+  storyboard: "Interface Builder",
+  xib: "Interface Builder",
+  plist: "property list",
+  json: "JSON",
+  yaml: "YAML",
+  yml: "YAML",
+  xml: "XML",
+  html: "HTML",
+  css: "CSS",
+  scss: "SCSS",
+  less: "Less",
+  sql: "SQL",
+  md: "Markdown/docs",
+  txt: "text",
+  sh: "shell script",
+  dockerfile: "Docker",
+  lock: "lock file",
+  toml: "TOML config",
+  ini: "INI config",
+  cfg: "config",
+  env: "environment config",
+  gradle: "Gradle build",
+  podspec: "CocoaPods spec",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  svg: "SVG image",
+  gif: "image",
+  webp: "image",
+  xcassets: "asset catalog",
+};
+
+function getFileCategory(filePath: string): string {
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  return FILE_CATEGORIES[ext] || ext;
+}
+
+export interface ChangeSummaryGroup {
+  category: string;
+  files: string[];
+}
+
+/**
+ * Categorize all changed files into meaningful groups by type.
+ * Gives the AI a structured view of everything that changed so it can
+ * account for all files when writing commit messages.
+ */
+export function categorizeChanges(
+  filePaths: string[]
+): ChangeSummaryGroup[] {
+  if (filePaths.length === 0) return [];
+
+  const groups = new Map<string, string[]>();
+
+  for (const filePath of filePaths) {
+    const category = getFileCategory(filePath);
+    const existing = groups.get(category);
+    if (existing) {
+      existing.push(filePath);
+    } else {
+      groups.set(category, [filePath]);
+    }
+  }
+
+  return Array.from(groups.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([category, files]) => ({ category, files }));
+}
+
+/**
+ * Detect files that a commit summary likely doesn't cover.
+ * Extracts "significant" filenames from the changed files and checks
+ * if any keywords from those files appear in the summary.
+ */
+export function detectUncoveredFiles(
+  summary: string,
+  filePaths: string[]
+): string[] {
+  if (filePaths.length <= 1) return [];
+
+  const summaryLower = summary.toLowerCase();
+  const uncovered: string[] = [];
+
+  for (const filePath of filePaths) {
+    const fileName = filePath.split("/").pop() || "";
+    const baseName = fileName.replace(/\.[^.]+$/, "");
+
+    // Split camelCase/PascalCase and kebab-case into words
+    const words = baseName
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length > 2)
+      .map(w => w.toLowerCase());
+
+    // Check if any meaningful word from the filename appears in the summary
+    const isMentioned = words.some(word => summaryLower.includes(word));
+
+    if (!isMentioned) {
+      uncovered.push(filePath);
+    }
+  }
+
+  return uncovered;
 }
 
 /**
@@ -415,7 +638,7 @@ export function generatePurposeSummary(
   // Fallback to branch name
   if (branchName) {
     const branchIntent = branchName
-      .replace(/^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style|ticket|release)\//i, "")
+      .replace(/^(feature|task|bug|hotfix|fix|chore|refactor|docs|test|ci|build|perf|style|ticket|release|rnd|experiment|spike|improvement|infra)\//i, "")
       .replace(/[A-Z]+-\d+[-_]?/gi, "")
       .replace(/[-_]/g, " ")
       .replace(/\s+/g, " ")

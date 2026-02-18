@@ -66,14 +66,17 @@ describe("generateCommitMessage", () => {
       expect(result.title).toContain("Task:");
     });
 
-    it("should generate placeholder and guidelines when no summary provided", async () => {
+    it("should generate descriptive placeholder and guidelines when no summary provided", async () => {
       const result = await generateCommitMessage({}, testConfig);
 
       expect(result.success).toBe(true);
       expect(result.title).toContain("Update");
-      // Should include diff and guidelines for AI to rewrite
+      expect(result.title).not.toMatch(/\d+ files/);
+      // Should include diff, changeSummary, and guidelines for AI to rewrite
       expect(result.commitGuidelines).not.toBeNull();
+      expect(result.commitGuidelines).toContain("changeSummary");
       expect(result.changes.diff).not.toBeNull();
+      expect(result.changeSummary.length).toBeGreaterThan(0);
     });
 
     it("should capitalize first letter", async () => {
@@ -112,6 +115,65 @@ describe("generateCommitMessage", () => {
       const result = await generateCommitMessage({ summary: "Add login", includeBody: true }, testConfig);
 
       expect(result.body).not.toBeNull();
+    });
+
+    it("should warn about files not covered by summary", async () => {
+      vi.mocked(getStagedChanges).mockResolvedValue({
+        files: [
+          { path: "src/VideoPlayerSDK.swift", additions: 50, deletions: 0 },
+          { path: "src/BootstrapCoordinator.swift", additions: 20, deletions: 5 },
+          { path: "src/LaunchArguments.swift", additions: 10, deletions: 2 },
+        ],
+        diff: "mock diff",
+      });
+
+      const result = await generateCommitMessage(
+        { summary: "Add video player SDK integration" },
+        testConfig
+      );
+
+      expect(result.coverageWarnings).not.toBeNull();
+      expect(result.coverageWarnings).toContain("src/BootstrapCoordinator.swift");
+      expect(result.coverageWarnings).toContain("src/LaunchArguments.swift");
+    });
+
+    it("should not warn when summary covers all files", async () => {
+      vi.mocked(getStagedChanges).mockResolvedValue({
+        files: [
+          { path: "src/auth/login.ts", additions: 10, deletions: 5 },
+        ],
+        diff: "mock diff",
+      });
+
+      const result = await generateCommitMessage(
+        { summary: "Fix login authentication" },
+        testConfig
+      );
+
+      expect(result.coverageWarnings).toBeNull();
+    });
+
+    it("should always include changeSummary with categorized file breakdown", async () => {
+      vi.mocked(getStagedChanges).mockResolvedValue({
+        files: [
+          { path: "src/Player.swift", additions: 50, deletions: 0 },
+          { path: "src/Config.swift", additions: 20, deletions: 5 },
+          { path: "project.pbxproj", additions: 10, deletions: 2 },
+        ],
+        diff: "mock diff",
+      });
+
+      const result = await generateCommitMessage(
+        { summary: "Add player integration" },
+        testConfig
+      );
+
+      expect(result.changeSummary).toBeDefined();
+      expect(result.changeSummary.length).toBeGreaterThan(0);
+
+      const swiftGroup = result.changeSummary.find(g => g.category === "Swift source");
+      expect(swiftGroup).toBeDefined();
+      expect(swiftGroup!.files).toHaveLength(2);
     });
 
     it("should skip prefix on main branch", async () => {
