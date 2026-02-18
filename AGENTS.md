@@ -227,7 +227,7 @@ This tool is **read-only** and **local-only**:
 5. **Overwriting nested env config** — New env vars in `loader.ts` must guard nested objects:
    ```typescript
    if (!envConfig.commit) envConfig.commit = {};
-   (envConfig.commit as Record<string, unknown>).includeStats = value;
+   (envConfig.commit as Record<string, unknown>).includeStats = val;
    ```
 6. **Forgetting to register new tools in `index.ts`** — Add to imports, `tools` array, and the `CallToolRequestSchema` switch.
 7. **Throwing in tool handlers** — Always return `{ success: false, errors: [...] }` instead.
