@@ -140,6 +140,42 @@ describe("git utilities", () => {
       expect(extractBranchPrefix("master")).toBe(null);
     });
 
+    it("should extract rnd prefix", () => {
+      expect(extractBranchPrefix("rnd/PROJ-123-experiment")).toBe("Rnd");
+    });
+
+    it("should extract release prefix", () => {
+      expect(extractBranchPrefix("release/v1.0.0")).toBe("Release");
+    });
+
+    it("should extract experiment prefix", () => {
+      expect(extractBranchPrefix("experiment/new-feature")).toBe("Experiment");
+    });
+
+    it("should extract spike prefix", () => {
+      expect(extractBranchPrefix("spike/prototype")).toBe("Spike");
+    });
+
+    it("should extract improvement prefix", () => {
+      expect(extractBranchPrefix("improvement/perf-boost")).toBe("Improvement");
+    });
+
+    it("should extract infra prefix", () => {
+      expect(extractBranchPrefix("infra/docker-setup")).toBe("Infra");
+    });
+
+    it("should support custom prefixes", () => {
+      expect(extractBranchPrefix("deploy/staging", ["deploy"])).toBe("Deploy");
+      expect(extractBranchPrefix("research/ml-model", ["research"])).toBe("Research");
+    });
+
+    it("should handle custom prefixes with regex metacharacters", () => {
+      expect(extractBranchPrefix("c++/memory-fix", ["c++"])).toBe("C++");
+      // Brackets are escaped, so "wip[v2]" only matches the literal string
+      expect(extractBranchPrefix("wip[v2]/thing", ["wip[v2]"])).toBe("Wip[v2]");
+      expect(() => extractBranchPrefix("something/foo", ["(bad"])).not.toThrow();
+    });
+
     it("should return null for branches without recognized prefix", () => {
       expect(extractBranchPrefix("random-branch-name")).toBe(null);
       expect(extractBranchPrefix("JIRA-123-something")).toBe(null);

@@ -12,6 +12,9 @@ import {
   formatConventionalCommit,
   summarizeFileChanges,
   generatePurposeSummary,
+  detectUncoveredFiles,
+  generateBestEffortTitle,
+  categorizeChanges,
 } from "../../src/utils/formatters.js";
 
 describe("formatters", () => {
@@ -425,6 +428,207 @@ describe("formatters", () => {
       const summary = generatePurposeSummary(commits, files, "task/add-notifications");
       // Just returns commit title - AI uses purposeContext.hasTests to mention tests
       expect(summary).toContain("Adds failure notifications");
+    });
+  });
+
+  describe("detectUncoveredFiles", () => {
+    it("should return empty for single file", () => {
+      expect(detectUncoveredFiles("Update login", ["src/auth/login.ts"])).toEqual([]);
+    });
+
+    it("should detect uncovered files based on filename keywords", () => {
+      const uncovered = detectUncoveredFiles(
+        "Add video player SDK integration",
+        [
+          "src/VideoPlayerSDK.swift",
+          "src/BootstrapCoordinator.swift",
+          "src/LaunchArguments.swift",
+        ]
+      );
+      expect(uncovered).toContain("src/BootstrapCoordinator.swift");
+      expect(uncovered).toContain("src/LaunchArguments.swift");
+      // VideoPlayerSDK is covered because "video", "player", "sdk" appear in summary
+      expect(uncovered).not.toContain("src/VideoPlayerSDK.swift");
+    });
+
+    it("should not flag files whose names appear in the summary", () => {
+      const uncovered = detectUncoveredFiles(
+        "Update player SDK and bootstrap coordinator",
+        [
+          "src/PlayerSDK.swift",
+          "src/BootstrapCoordinator.swift",
+        ]
+      );
+      expect(uncovered).toEqual([]);
+    });
+
+    it("should handle camelCase splitting", () => {
+      const uncovered = detectUncoveredFiles(
+        "Fix authentication flow",
+        [
+          "src/AuthenticationFlow.swift",
+          "src/UserProfile.swift",
+        ]
+      );
+      // "authentication" and "flow" are in the summary
+      expect(uncovered).not.toContain("src/AuthenticationFlow.swift");
+      expect(uncovered).toContain("src/UserProfile.swift");
+    });
+  });
+
+  describe("generateBestEffortTitle", () => {
+    it("should handle single file", () => {
+      const title = generateBestEffortTitle([
+        { path: "src/auth/login.ts", additions: 10, deletions: 5 },
+      ]);
+      expect(title).toBe("Update login.ts");
+    });
+
+    it("should detect all-new files", () => {
+      const title = generateBestEffortTitle([
+        { path: "src/utils/helper.ts", additions: 50, deletions: 0 },
+        { path: "src/utils/format.ts", additions: 30, deletions: 0 },
+      ]);
+      expect(title).toContain("Add");
+      expect(title).not.toMatch(/\d+ files/);
+    });
+
+    it("should detect all-deleted files", () => {
+      const title = generateBestEffortTitle([
+        { path: "src/old/legacy.ts", additions: 0, deletions: 50 },
+        { path: "src/old/deprecated.ts", additions: 0, deletions: 30 },
+      ]);
+      expect(title).toContain("Remove");
+      expect(title).not.toMatch(/\d+ files/);
+    });
+
+    it("should use common directory when files share a path", () => {
+      const title = generateBestEffortTitle([
+        { path: "src/auth/login.ts", additions: 10, deletions: 5 },
+        { path: "src/auth/logout.ts", additions: 10, deletions: 5 },
+        { path: "src/auth/register.ts", additions: 10, deletions: 5 },
+      ]);
+      expect(title).toContain("auth");
+      expect(title).not.toMatch(/\d+ files/);
+    });
+
+    it("should mention dominant file type without common dir", () => {
+      const title = generateBestEffortTitle([
+        { path: "User.swift", additions: 10, deletions: 5 },
+        { path: "Post.swift", additions: 10, deletions: 5 },
+      ]);
+      expect(title).toContain("Swift source");
+      expect(title).not.toMatch(/\d+/);
+    });
+
+    it("should prefer common directory over file type", () => {
+      const title = generateBestEffortTitle([
+        { path: "Models/User.swift", additions: 10, deletions: 5 },
+        { path: "Models/Post.swift", additions: 10, deletions: 5 },
+      ]);
+      expect(title).toContain("Models");
+      expect(title).not.toMatch(/\d+/);
+    });
+
+    it("should never include file counts in the title", () => {
+      const title = generateBestEffortTitle([
+        { path: "a.ts", additions: 10, deletions: 5 },
+        { path: "b.ts", additions: 10, deletions: 5 },
+        { path: "c.ts", additions: 10, deletions: 5 },
+        { path: "d.ts", additions: 10, deletions: 5 },
+      ]);
+      expect(title).not.toMatch(/\d+ files/);
+      expect(title).not.toMatch(/\d+ \.ts/);
+    });
+
+    it("should handle empty array", () => {
+      const title = generateBestEffortTitle([]);
+      expect(title).toBe("Update project");
+    });
+  });
+
+  describe("summarizeFileChanges (categorized)", () => {
+    it("should include categorized breakdown for >3 files", () => {
+      const files = [
+        { path: "src/App.swift", additions: 10, deletions: 5 },
+        { path: "src/View.swift", additions: 20, deletions: 0 },
+        { path: "project.pbxproj", additions: 50, deletions: 10 },
+        { path: "config.xcconfig", additions: 5, deletions: 2 },
+      ];
+      const summary = summarizeFileChanges(files);
+      expect(summary).toContain("4 file(s) changed");
+      expect(summary).toContain("Swift source");
+      expect(summary).toContain("Xcode project config");
+      expect(summary).toContain("Xcode build settings");
+    });
+
+    it("should not include breakdown for <=3 files", () => {
+      const files = [
+        { path: "src/index.ts", additions: 10, deletions: 5 },
+        { path: "src/utils.ts", additions: 20, deletions: 0 },
+      ];
+      const summary = summarizeFileChanges(files);
+      expect(summary).not.toContain("TypeScript");
+    });
+
+    it("should omit stats when includeStats is false", () => {
+      const files = [
+        { path: "src/App.swift", additions: 10, deletions: 5 },
+        { path: "src/View.swift", additions: 20, deletions: 0 },
+        { path: "project.pbxproj", additions: 50, deletions: 10 },
+        { path: "config.xcconfig", additions: 5, deletions: 2 },
+      ];
+      const summary = summarizeFileChanges(files, { includeStats: false });
+      expect(summary).not.toContain("file(s) changed");
+      expect(summary).not.toContain("+");
+      expect(summary).not.toContain("lines");
+      // Still shows categorized breakdown
+      expect(summary).toContain("Swift source");
+    });
+
+    it("should include stats by default", () => {
+      const files = [
+        { path: "src/index.ts", additions: 10, deletions: 5 },
+        { path: "src/utils.ts", additions: 20, deletions: 0 },
+      ];
+      const summary = summarizeFileChanges(files);
+      expect(summary).toContain("2 file(s) changed");
+      expect(summary).toContain("+30 -5 lines");
+    });
+  });
+
+  describe("categorizeChanges", () => {
+    it("should group files by category", () => {
+      const groups = categorizeChanges([
+        "src/Player.swift",
+        "src/Config.swift",
+        "project.pbxproj",
+        "settings.xcconfig",
+        "assets.json",
+      ]);
+      expect(groups.length).toBeGreaterThan(1);
+
+      const swiftGroup = groups.find(g => g.category === "Swift source");
+      expect(swiftGroup).toBeDefined();
+      expect(swiftGroup!.files).toHaveLength(2);
+
+      const pbxGroup = groups.find(g => g.category === "Xcode project config");
+      expect(pbxGroup).toBeDefined();
+      expect(pbxGroup!.files).toHaveLength(1);
+    });
+
+    it("should sort groups by file count descending", () => {
+      const groups = categorizeChanges([
+        "a.swift", "b.swift", "c.swift",
+        "d.json",
+        "e.pbxproj",
+      ]);
+      expect(groups[0].category).toBe("Swift source");
+      expect(groups[0].files).toHaveLength(3);
+    });
+
+    it("should return empty for no files", () => {
+      expect(categorizeChanges([])).toEqual([]);
     });
   });
 });

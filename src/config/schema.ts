@@ -38,6 +38,8 @@ const commitSchema = z
     requireBody: z.boolean().default(false),
     scopes: z.array(z.string()).optional(),
     prefix: prefixSchema,
+    // Whether to include file/line stats in summaries (file counts, +/- lines)
+    includeStats: z.boolean().default(true),
     rules: z
       .object({
         imperativeMood: z.boolean().default(true),
@@ -146,6 +148,10 @@ export const configSchema = z.object({
   // Default repo path - used when repoPath isn't passed to tools
   // Useful for MCP servers where process.cwd() is the server directory, not the project
   defaultRepoPath: z.string().optional(),
+  // Additional branch prefixes to recognize beyond the defaults
+  // (task, bug, feature, hotfix, chore, refactor, fix, docs, test, ci, build, perf, style,
+  //  rnd, release, experiment, spike, improvement, infra)
+  branchPrefixes: z.array(z.string()).optional(),
   integrations: integrationsSchema,
 });
 

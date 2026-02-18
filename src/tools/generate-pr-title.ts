@@ -55,7 +55,7 @@ export async function generatePrTitle(
   const ticket = branchName
     ? extractTicketFromBranch(branchName, config.ticketPattern)
     : null;
-  const branchPrefix = branchName ? extractBranchPrefix(branchName) : null;
+  const branchPrefix = branchName ? extractBranchPrefix(branchName, config.branchPrefixes) : null;
 
   // Resolve prefix style - "inherit" means use the commit prefix style
   const resolvedPrefixConfig = {

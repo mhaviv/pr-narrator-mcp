@@ -29,10 +29,24 @@ export function getConfig(): Config {
     envConfig.defaultRepoPath = process.env.DEFAULT_REPO_PATH;
   }
 
+  if (process.env.INCLUDE_STATS !== undefined) {
+    const val = process.env.INCLUDE_STATS.toLowerCase();
+    if (!envConfig.commit) envConfig.commit = {};
+    (envConfig.commit as Record<string, unknown>).includeStats = val !== "false" && val !== "0";
+  }
+
+  if (process.env.BRANCH_PREFIXES) {
+    envConfig.branchPrefixes = process.env.BRANCH_PREFIXES
+      .split(",")
+      .map(p => p.trim())
+      .filter(Boolean);
+  }
+
   if (process.env.PREFIX_STYLE) {
     const style = process.env.PREFIX_STYLE;
     if (style === "capitalized" || style === "bracketed") {
-      envConfig.commit = { prefix: { style } };
+      if (!envConfig.commit) envConfig.commit = {};
+      (envConfig.commit as Record<string, unknown>).prefix = { style };
     }
   }
 

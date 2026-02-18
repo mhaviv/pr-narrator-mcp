@@ -18,6 +18,10 @@ import {
   formatCommitType,
   isMainBranch,
   summarizeFileChanges,
+  detectUncoveredFiles,
+  generateBestEffortTitle,
+  categorizeChanges,
+  type ChangeSummaryGroup,
 } from "../utils/formatters.js";
 
 export const generateCommitMessageSchema = z.object({
@@ -71,6 +75,10 @@ export interface GenerateCommitMessageResult {
     /** Suggested truncated title if original exceeds maxTitleLength */
     truncatedSuggestion: string | null;
   };
+  /** Structured breakdown of ALL changed files by category */
+  changeSummary: ChangeSummaryGroup[];
+  /** Files that the summary may not cover — hint to review */
+  coverageWarnings: string[] | null;
   /** Guidelines for AI when summary wasn't provided */
   commitGuidelines: string | null;
   errors: string[];
@@ -115,6 +123,8 @@ export async function generateCommitMessage(
         warnings: [],
         truncatedSuggestion: null,
       },
+      changeSummary: [],
+      coverageWarnings: null,
       commitGuidelines: null,
       errors: ["No staged changes found. Stage changes with 'git add' first."],
     };
@@ -126,7 +136,7 @@ export async function generateCommitMessage(
     ? extractTicketFromBranch(currentBranch, config.ticketPattern)
     : null;
   const branchPrefix = currentBranch
-    ? extractBranchPrefix(currentBranch)
+    ? extractBranchPrefix(currentBranch, config.branchPrefixes)
     : null;
 
   // Determine commit type and scope
@@ -143,14 +153,9 @@ export async function generateCommitMessage(
   let summary = input.summary || "";
   let needsAiRewrite = false;
 
-  // If no summary provided, create a placeholder and flag for AI rewrite
+  // If no summary provided, generate a best-effort title and flag for AI rewrite
   if (!summary) {
-    const fileCount = stagedChanges.files.length;
-    if (fileCount === 1) {
-      summary = `Update ${stagedChanges.files[0].path}`;
-    } else {
-      summary = `Update ${fileCount} files`;
-    }
+    summary = generateBestEffortTitle(stagedChanges.files);
     needsAiRewrite = true;
   }
 
@@ -204,18 +209,35 @@ export async function generateCommitMessage(
   // If summary was provided (no AI rewrite), we can include a simple body
   let body: string | null = null;
   if (!needsAiRewrite && (input.includeBody || commitConfig.requireBody)) {
-    body = `\n${summarizeFileChanges(stagedChanges.files)}`;
+    body = `\n${summarizeFileChanges(stagedChanges.files, { includeStats: commitConfig.includeStats })}`;
   }
   // When AI rewrites, it generates the body from the diff - no auto-appending
 
   const fullMessage = body ? `${title}\n${body}` : title;
   const valid = errors.length === 0;
 
+  // Categorize ALL changed files so the AI can account for everything
+  const changeSummary = categorizeChanges(filePaths);
+
+  // When summary is provided, check if it covers the significant changed files
+  let coverageWarnings: string[] | null = null;
+  if (input.summary && filePaths.length > 1) {
+    const uncovered = detectUncoveredFiles(input.summary, filePaths);
+    if (uncovered.length > 0) {
+      coverageWarnings = uncovered;
+      warnings.push(
+        `Your summary may not cover changes in: ${uncovered.join(", ")}. Review these files to ensure your commit message is complete.`
+      );
+    }
+  }
+
   // If AI needs to rewrite, provide diff and guidelines
   const commitGuidelines = needsAiRewrite
     ? `The title "${title}" is a PLACEHOLDER. You MUST rewrite it based on the diff.
 
-Analyze the diff in changes.diff and write a commit message following this style:
+Analyze the diff in changes.diff and the changeSummary to write a commit message that
+accounts for ALL changed files and categories. The changeSummary groups every file by type —
+make sure your message reflects the full scope of changes, not just part of them.
 
 TITLE FORMAT:
 - Keep prefix "${prefix}" at the start
@@ -223,9 +245,11 @@ TITLE FORMAT:
 - Describe WHAT changed functionally (not which file)
 - Use imperative verbs: Add, Update, Fix, Remove, Migrate, Refactor
 - Be specific: "Fix suffix removal for usernames containing -by-" not "Update file"
+- Do NOT include file counts or line numbers in the title
 
 BODY FORMAT (for complex changes with multiple distinct changes):
 - Use "- " bullets for each distinct change
+- Account for all file categories shown in changeSummary
 - Describe what each change does, not implementation details
 - Keep bullets concise but meaningful
 - NEVER add file counts like "X files changed (+Y -Z lines)" - this is metadata, not part of commit
@@ -263,7 +287,7 @@ Show ONLY the final rewritten commit message to the user.`
       fileCount: stagedChanges.files.length,
       files: filePaths,
       // Only include summary when not rewriting (AI shouldn't copy file stats)
-      summary: needsAiRewrite ? "" : summarizeFileChanges(stagedChanges.files),
+      summary: needsAiRewrite ? "" : summarizeFileChanges(stagedChanges.files, { includeStats: commitConfig.includeStats }),
       diff: needsAiRewrite ? stagedChanges.diff : null,
     },
     validation: {
@@ -271,6 +295,8 @@ Show ONLY the final rewritten commit message to the user.`
       warnings,
       truncatedSuggestion,
     },
+    changeSummary,
+    coverageWarnings,
     commitGuidelines,
     errors,
   };
@@ -287,8 +313,9 @@ TWO MODES:
    the proper prefix, capitalization, and validation.
 
 2. WITHOUT summary: Returns context for YOU to compose the message.
-   - 'title' is a PLACEHOLDER like "Task: Update 2 files"
+   - 'title' is a best-effort PLACEHOLDER based on file patterns
    - 'changes.diff' contains the actual diff
+   - 'changeSummary' groups ALL files by category (Swift source, config, etc.)
    - 'commitGuidelines' explains how to write the message
    - YOU must analyze the diff and compose a meaningful title
 

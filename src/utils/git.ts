@@ -93,6 +93,16 @@ export interface BranchChanges {
   diffTruncated?: boolean;
 }
 
+export interface WorkingTreeStatus {
+  modified: string[];
+  untracked: string[];
+  deleted: string[];
+  modifiedCount: number;
+  untrackedCount: number;
+  deletedCount: number;
+  totalUncommitted: number;
+}
+
 export interface CommitInfo {
   hash: string;
   message: string;
@@ -457,6 +467,43 @@ function parseNumstat(
 }
 
 /**
+ * Get working tree status (unstaged + untracked files)
+ */
+export async function getWorkingTreeStatus(
+  repoPath: string
+): Promise<WorkingTreeStatus> {
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
+    const status = await git.status();
+
+    const modified = [...status.modified, ...status.renamed.map(r => r.to)];
+    const untracked = status.not_added;
+    const deleted = status.deleted;
+
+    return {
+      modified,
+      untracked,
+      deleted,
+      modifiedCount: modified.length,
+      untrackedCount: untracked.length,
+      deletedCount: deleted.length,
+      totalUncommitted: modified.length + untracked.length + deleted.length,
+    };
+  } catch {
+    return {
+      modified: [],
+      untracked: [],
+      deleted: [],
+      modifiedCount: 0,
+      untrackedCount: 0,
+      deletedCount: 0,
+      totalUncommitted: 0,
+    };
+  }
+}
+
+/**
  * Extract ticket number from branch name using pattern
  */
 export function extractTicketFromBranch(
@@ -476,20 +523,33 @@ export function extractTicketFromBranch(
   return match ? match[0] : null;
 }
 
+const DEFAULT_BRANCH_PREFIXES = [
+  "task", "bug", "feature", "hotfix", "chore", "refactor", "fix",
+  "docs", "test", "ci", "build", "perf", "style",
+  "rnd", "release", "experiment", "spike", "improvement", "infra",
+];
+
 /**
- * Extract branch prefix (task, bug, feature, etc.)
+ * Extract branch prefix (task, bug, feature, rnd, etc.)
+ * Accepts optional custom prefixes that extend the default list.
  */
-export function extractBranchPrefix(branchName: string): string | null {
+export function extractBranchPrefix(
+  branchName: string,
+  customPrefixes?: string[]
+): string | null {
   if (!branchName) {
     return null;
   }
 
-  const match = branchName.match(
-    /^(task|bug|feature|hotfix|chore|refactor|fix|docs|test|ci|build|perf|style)\//i
-  );
+  const allPrefixes = customPrefixes
+    ? [...new Set([...DEFAULT_BRANCH_PREFIXES, ...customPrefixes.map(p => p.toLowerCase())])]
+    : DEFAULT_BRANCH_PREFIXES;
+
+  const escaped = allPrefixes.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`^(${escaped.join("|")})\\/`, "i");
+  const match = branchName.match(pattern);
 
   if (match) {
-    // Capitalize first letter
     const prefix = match[1].toLowerCase();
     return prefix.charAt(0).toUpperCase() + prefix.slice(1);
   }
