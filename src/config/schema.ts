@@ -96,17 +96,20 @@ const prSectionSchema = z.object({
 });
 
 /**
+ * Canonical list of valid PR template presets
+ */
+export const VALID_PRESETS = [
+  "default", "minimal", "detailed",
+  "mobile", "frontend", "backend",
+  "devops", "security", "ml",
+] as const;
+
+/**
  * PR template configuration
  */
 const prTemplateConfigSchema = z
   .object({
-    preset: z
-      .enum([
-        "default", "minimal", "detailed",
-        "mobile", "frontend", "backend",
-        "devops", "security", "ml",
-      ])
-      .optional(),
+    preset: z.enum(VALID_PRESETS).optional(),
     detectRepoTemplate: z.boolean().default(true),
   })
   .default({});

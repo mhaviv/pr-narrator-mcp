@@ -1,6 +1,6 @@
 import { readdir, readFile } from "fs/promises";
 import { join, relative } from "path";
-import type { Config, PrSection, SectionCondition } from "../config/schema.js";
+import { VALID_PRESETS, type Config, type PrSection, type SectionCondition } from "../config/schema.js";
 import { inferCommitType, generatePurposeSummary } from "./formatters.js";
 import { validateRepoPath } from "./git.js";
 
@@ -353,11 +353,7 @@ export async function detectRepoDomain(repoPath: string): Promise<string> {
 // Preset definitions
 // ---------------------------------------------------------------------------
 
-export const VALID_PRESETS = new Set([
-  "default", "minimal", "detailed",
-  "mobile", "frontend", "backend",
-  "devops", "security", "ml",
-]);
+export { VALID_PRESETS };
 
 const PRESETS: Record<string, PrSection[]> = {
   default: [

@@ -66,7 +66,7 @@ export async function generatePrDescription(
 
   // Build effective config, potentially overriding template preset
   let effectiveConfig = config;
-  if (input.templatePreset && VALID_PRESETS.has(input.templatePreset)) {
+  if (input.templatePreset && (VALID_PRESETS as readonly string[]).includes(input.templatePreset)) {
     effectiveConfig = {
       ...config,
       pr: {

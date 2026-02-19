@@ -1,4 +1,4 @@
-import { configSchema, defaultConfig, type Config } from "./schema.js";
+import { configSchema, defaultConfig, VALID_PRESETS, type Config } from "./schema.js";
 import { validateRegexPattern } from "../utils/git.js";
 
 /**
@@ -52,12 +52,7 @@ export function getConfig(): Config {
 
   if (process.env.PR_TEMPLATE_PRESET) {
     const preset = process.env.PR_TEMPLATE_PRESET;
-    const validPresets = [
-      "default", "minimal", "detailed",
-      "mobile", "frontend", "backend",
-      "devops", "security", "ml",
-    ];
-    if (validPresets.includes(preset)) {
+    if ((VALID_PRESETS as readonly string[]).includes(preset)) {
       if (!envConfig.pr) envConfig.pr = {};
       if (!(envConfig.pr as Record<string, unknown>).template) {
         (envConfig.pr as Record<string, unknown>).template = {};

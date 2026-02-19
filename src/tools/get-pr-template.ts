@@ -47,7 +47,7 @@ export async function getPrTemplate(
 
   // If a preset is explicitly requested and valid, override config
   let effectiveConfig = config;
-  if (input.preset && VALID_PRESETS.has(input.preset)) {
+  if (input.preset && (VALID_PRESETS as readonly string[]).includes(input.preset)) {
     effectiveConfig = {
       ...config,
       pr: {
