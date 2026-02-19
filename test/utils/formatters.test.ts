@@ -6,6 +6,7 @@ import {
   isCapitalized,
   removeTrailingPeriod,
   truncate,
+  truncateAtWordBoundary,
   formatTicketLink,
   inferCommitType,
   inferScope,
@@ -15,6 +16,7 @@ import {
   detectUncoveredFiles,
   generateBestEffortTitle,
   categorizeChanges,
+  generateStructuredBody,
 } from "../../src/utils/formatters.js";
 
 describe("formatters", () => {
@@ -157,6 +159,32 @@ describe("formatters", () => {
     });
   });
 
+  describe("truncateAtWordBoundary", () => {
+    it("should not truncate strings within limit", () => {
+      expect(truncateAtWordBoundary("Short title", 50)).toBe("Short title");
+    });
+
+    it("should truncate at the last space before maxLength", () => {
+      const result = truncateAtWordBoundary(
+        "Add user authentication and authorization flow with tests",
+        40
+      );
+      expect(result.length).toBeLessThanOrEqual(40);
+      expect(result).not.toContain("...");
+      expect(result).toBe("Add user authentication and");
+    });
+
+    it("should fall back to ellipsis when no good word boundary exists", () => {
+      const result = truncateAtWordBoundary("Abcdefghijklmnopqrstuvwxyz", 15);
+      expect(result).toContain("...");
+      expect(result.length).toBeLessThanOrEqual(15);
+    });
+
+    it("should handle exact length", () => {
+      expect(truncateAtWordBoundary("Exact", 5)).toBe("Exact");
+    });
+  });
+
   describe("formatTicketLink", () => {
     it("should format ticket as markdown link", () => {
       expect(
@@ -205,6 +233,45 @@ describe("formatters", () => {
     it("should default to feat for other files", () => {
       expect(inferCommitType(["src/components/Button.tsx"])).toBe("feat");
       expect(inferCommitType(["lib/utils.ts"])).toBe("feat");
+    });
+
+    it("should return feat when code files are the majority despite a README", () => {
+      const files = [
+        "src/Models/User.swift",
+        "src/Models/Post.swift",
+        "src/Views/UserView.swift",
+        "src/Views/PostView.swift",
+        "src/Protocols/Routable.swift",
+        "src/Routing/Router.swift",
+        "src/Routing/AppRouter.swift",
+        "src/Config/AppConfig.swift",
+        "src/Config/Environment.swift",
+        "src/Services/APIService.swift",
+        "src/Services/AuthService.swift",
+        "src/Services/NetworkService.swift",
+        "src/Coordinators/AppCoordinator.swift",
+        "src/Coordinators/AuthCoordinator.swift",
+        "src/Extensions/String+Utils.swift",
+        "project.pbxproj",
+        "README.md",
+      ];
+      expect(inferCommitType(files)).toBe("feat");
+    });
+
+    it("should return docs when docs files are the majority", () => {
+      expect(
+        inferCommitType(["README.md", "docs/guide.md", "docs/api.md"])
+      ).toBe("docs");
+    });
+
+    it("should return feat for mixed files with no majority", () => {
+      expect(
+        inferCommitType(["README.md", "src/app.ts", "test/app.test.ts"])
+      ).toBe("feat");
+    });
+
+    it("should handle empty array", () => {
+      expect(inferCommitType([])).toBe("feat");
     });
   });
 
@@ -629,6 +696,67 @@ describe("formatters", () => {
 
     it("should return empty for no files", () => {
       expect(categorizeChanges([])).toEqual([]);
+    });
+  });
+
+  describe("generateStructuredBody", () => {
+    it("should return empty string for empty input", () => {
+      expect(generateStructuredBody([])).toBe("");
+    });
+
+    it("should list single files by name", () => {
+      const groups = [{ category: "Markdown/docs", files: ["README.md"] }];
+      const body = generateStructuredBody(groups);
+      expect(body).toBe("- Markdown/docs: README.md");
+    });
+
+    it("should list filenames for small groups (<=3)", () => {
+      const groups = [
+        {
+          category: "Swift source",
+          files: ["src/User.swift", "src/Post.swift"],
+        },
+      ];
+      const body = generateStructuredBody(groups);
+      expect(body).toBe("- Swift source: User.swift, Post.swift");
+    });
+
+    it("should show count for large groups (>3)", () => {
+      const groups = [
+        {
+          category: "Swift source",
+          files: [
+            "src/A.swift",
+            "src/B.swift",
+            "src/C.swift",
+            "src/D.swift",
+          ],
+        },
+      ];
+      const body = generateStructuredBody(groups);
+      expect(body).toBe("- Swift source: 4 files");
+    });
+
+    it("should produce multi-line output for multiple categories", () => {
+      const groups = [
+        {
+          category: "Swift source",
+          files: [
+            "src/A.swift",
+            "src/B.swift",
+            "src/C.swift",
+            "src/D.swift",
+          ],
+        },
+        { category: "Xcode project config", files: ["project.pbxproj"] },
+        { category: "Markdown/docs", files: ["README.md"] },
+      ];
+      const body = generateStructuredBody(groups);
+      const lines = body.split("\n");
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toContain("Swift source: 4 files");
+      expect(lines[1]).toContain("Xcode project config: project.pbxproj");
+      expect(lines[2]).toContain("Markdown/docs: README.md");
     });
   });
 });
