@@ -305,6 +305,56 @@ export function inferScope(
 }
 
 /**
+ * Map conventional commit types to Keep a Changelog section headers.
+ */
+export function mapCommitTypeToChangelogSection(type: string): string {
+  const map: Record<string, string> = {
+    feat: "Added",
+    fix: "Fixed",
+    docs: "Documentation",
+    style: "Changed",
+    refactor: "Changed",
+    perf: "Changed",
+    test: "Changed",
+    build: "Changed",
+    ci: "Changed",
+    chore: "Changed",
+    revert: "Reverted",
+    other: "Other",
+  };
+  return map[type.toLowerCase()] || "Other";
+}
+
+/**
+ * Format a single changelog entry as a bullet line.
+ */
+export function formatChangelogEntry(
+  entry: { title: string; hash: string; author: string; scope: string | null },
+  format: "keepachangelog" | "github-release" | "plain",
+  includeAuthors: boolean
+): string {
+  const scopePrefix = entry.scope
+    ? format === "plain"
+      ? `[${entry.scope}] `
+      : `**${entry.scope}**: `
+    : "";
+
+  switch (format) {
+    case "keepachangelog":
+      return `- ${scopePrefix}${entry.title} (${entry.hash})`;
+    case "github-release":
+      if (includeAuthors) {
+        return `- ${scopePrefix}${entry.title} by **${entry.author}** in ${entry.hash}`;
+      }
+      return `- ${scopePrefix}${entry.title} in ${entry.hash}`;
+    case "plain":
+      return `- ${scopePrefix}${entry.title}`;
+    default:
+      return `- ${scopePrefix}${entry.title}`;
+  }
+}
+
+/**
  * Format a conventional commit message (legacy format with lowercase type)
  * @deprecated Use formatCommitTitle for more flexible formatting
  */
