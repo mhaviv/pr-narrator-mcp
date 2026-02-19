@@ -10,7 +10,7 @@
 
 > Generate consistent commit messages, PR content, and release notes automatically.
 
-An MCP server that generates commit messages, PR descriptions, and changelogs based on your git changes. It auto-detects your repo's domain (mobile, frontend, backend, devops, security, ML) and applies the right PR template — no config needed.
+An MCP server that generates commit messages, PR content (titles, descriptions, and templates), and release notes from your git changes. If your repo doesn't already have a PR template, it auto-detects the domain (mobile, frontend, backend, devops, security, ML) and applies the right one — no config needed.
 
 ## Install
 
