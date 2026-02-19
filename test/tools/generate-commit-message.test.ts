@@ -205,29 +205,62 @@ describe("generateCommitMessage", () => {
       expect(result.validation.warnings.some((w) => w.includes("imperative"))).toBe(true);
     });
 
-    it("should warn about long titles and provide truncated suggestion", async () => {
+    it("should auto-truncate long titles and spill full text into body", async () => {
       const longSummary = "A".repeat(150);
       const result = await generateCommitMessage({ summary: longSummary }, testConfig);
 
-      expect(result.title).toContain(longSummary);
-      expect(result.validation.warnings.some((w) => w.includes("characters"))).toBe(true);
+      expect(result.title.length).toBeLessThanOrEqual(testConfig.commit.maxTitleLength);
+      expect(result.validation.warnings.some((w) => w.includes("Auto-truncated"))).toBe(true);
       expect(result.validation.truncatedSuggestion).not.toBeNull();
       expect(result.validation.truncatedSuggestion!.length).toBeLessThanOrEqual(
         testConfig.commit.maxTitleLength
       );
       expect(result.validation.truncatedSuggestion).toContain("...");
+      expect(result.body).not.toBeNull();
+      expect(result.body).toContain(longSummary);
+      expect(result.fullMessage).toContain(result.title);
+      expect(result.fullMessage).toContain(longSummary);
     });
 
-    it("should provide diff and guidelines when includeBody is true", async () => {
+    it("should generate structured body and diff when includeBody is true", async () => {
       const result = await generateCommitMessage(
         { summary: "Add login", includeBody: true },
         testConfig
       );
 
+      expect(result.body).not.toBeNull();
+      expect(result.body).toContain("TypeScript");
+      expect(result.fullMessage).toContain(result.title);
+      expect(result.fullMessage).toContain(result.body!);
       expect(result.changes.diff).not.toBeNull();
       expect(result.commitGuidelines).not.toBeNull();
-      expect(result.commitGuidelines).toContain("diff");
-      expect(result.commitGuidelines).toContain("functional impact");
+      expect(result.commitGuidelines).toContain("structured body");
+    });
+
+    it("should generate detailed body for multi-file commits with includeBody", async () => {
+      vi.mocked(getStagedChanges).mockResolvedValue({
+        files: [
+          { path: "src/Models/User.swift", additions: 50, deletions: 0, binary: false },
+          { path: "src/Models/Post.swift", additions: 30, deletions: 0, binary: false },
+          { path: "src/Views/UserView.swift", additions: 40, deletions: 0, binary: false },
+          { path: "src/Views/PostView.swift", additions: 35, deletions: 0, binary: false },
+          { path: "project.pbxproj", additions: 20, deletions: 5, binary: false },
+          { path: "README.md", additions: 10, deletions: 2, binary: false },
+        ],
+        totalAdditions: 185,
+        totalDeletions: 7,
+        diff: "mock diff content",
+      });
+
+      const result = await generateCommitMessage(
+        { summary: "Add user and post models with views", includeBody: true },
+        testConfig
+      );
+
+      expect(result.body).not.toBeNull();
+      expect(result.body).toContain("Swift source");
+      expect(result.body).toContain("Xcode project config");
+      expect(result.body).toContain("Markdown/docs");
     });
 
     it("should not include diff when summary provided without includeBody", async () => {
@@ -238,6 +271,15 @@ describe("generateCommitMessage", () => {
 
       expect(result.changes.diff).toBeNull();
       expect(result.commitGuidelines).toBeNull();
+    });
+
+    it("should not generate body when includeBody is false and title fits", async () => {
+      const result = await generateCommitMessage(
+        { summary: "Add login", includeBody: false },
+        testConfig
+      );
+
+      expect(result.body).toBeNull();
     });
 
     it("should warn about files not covered by summary", async () => {

@@ -156,6 +156,24 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 /**
+ * Truncate a string at a word boundary to fit within maxLength.
+ * Preferred for commit titles where mid-word cuts look bad.
+ * Falls back to hard truncation with ellipsis if no good boundary found.
+ */
+export function truncateAtWordBoundary(str: string, maxLength: number): string {
+  if (str.length <= maxLength) return str;
+
+  const truncated = str.slice(0, maxLength);
+  const lastSpace = truncated.lastIndexOf(" ");
+
+  if (lastSpace > maxLength * 0.6) {
+    return truncated.slice(0, lastSpace);
+  }
+
+  return str.slice(0, maxLength - 3) + "...";
+}
+
+/**
  * Format a ticket link
  */
 export function formatTicketLink(
@@ -185,29 +203,48 @@ export function formatTicketLinks(
 }
 
 /**
- * Determine commit type from file paths
+ * Determine commit type from file paths using majority-based weighting.
+ * Each file is classified by the first matching pattern (priority order),
+ * then the type with the most files wins. "feat" wins ties so that a
+ * single README doesn't override 15 code files.
  */
 export function inferCommitType(filePaths: string[]): string {
-  // Order matters: more specific patterns must come before general ones
+  if (filePaths.length === 0) return "feat";
+
   const patterns: Array<{ pattern: RegExp; type: string }> = [
     { pattern: /test|spec|__tests__/i, type: "test" },
     { pattern: /\.md$|readme|docs?\//i, type: "docs" },
     { pattern: /ci|\.github|jenkinsfile|dockerfile/i, type: "ci" },
-    // "build" must come before "chore" since package.json matches both \.json$ and package\.json
     { pattern: /package\.json|package-lock\.json|requirements\.txt|gemfile|poetry\.lock|yarn\.lock|pnpm-lock\.yaml/i, type: "build" },
     { pattern: /\.ya?ml$|\.json$|config|\.env/i, type: "chore" },
     { pattern: /\.css$|\.scss$|\.less$|style/i, type: "style" },
   ];
 
-  for (const { pattern, type } of patterns) {
-    if (filePaths.some((path) => pattern.test(path))) {
-      return type;
+  const typeCounts = new Map<string, number>();
+
+  for (const filePath of filePaths) {
+    let fileType = "feat";
+    for (const { pattern, type } of patterns) {
+      if (pattern.test(filePath)) {
+        fileType = type;
+        break;
+      }
+    }
+    typeCounts.set(fileType, (typeCounts.get(fileType) || 0) + 1);
+  }
+
+  let bestType = "feat";
+  let bestCount = typeCounts.get("feat") || 0;
+
+  for (const [type, count] of typeCounts) {
+    if (type === "feat") continue;
+    if (count > bestCount) {
+      bestCount = count;
+      bestType = type;
     }
   }
 
-  // Default based on common patterns in file content would require reading files
-  // For now, return "feat" as a sensible default
-  return "feat";
+  return bestType;
 }
 
 /**
@@ -535,6 +572,31 @@ export function categorizeChanges(
   return Array.from(groups.entries())
     .sort((a, b) => b[1].length - a[1].length)
     .map(([category, files]) => ({ category, files }));
+}
+
+/**
+ * Generate a structured commit body from categorized file changes.
+ * Groups files by category and produces a bulleted list.
+ * For small groups (<=3 files) lists filenames; for larger groups shows count.
+ */
+export function generateStructuredBody(changeSummary: ChangeSummaryGroup[]): string {
+  if (changeSummary.length === 0) return "";
+
+  const lines: string[] = [];
+
+  for (const group of changeSummary) {
+    if (group.files.length === 1) {
+      const fileName = group.files[0].split("/").pop();
+      lines.push(`- ${group.category}: ${fileName}`);
+    } else if (group.files.length <= 3) {
+      const fileNames = group.files.map((f) => f.split("/").pop());
+      lines.push(`- ${group.category}: ${fileNames.join(", ")}`);
+    } else {
+      lines.push(`- ${group.category}: ${group.files.length} files`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 /**
