@@ -2,6 +2,7 @@ import { readdir, readFile } from "fs/promises";
 import { join, relative } from "path";
 import type { Config, PrSection, SectionCondition } from "../config/schema.js";
 import { inferCommitType, generatePurposeSummary } from "./formatters.js";
+import { validateRepoPath } from "./git.js";
 
 export interface ResolvedTemplate {
   sections: PrSection[];
@@ -50,10 +51,11 @@ export interface FoundTemplate {
 }
 
 export async function findRepoTemplate(repoPath: string): Promise<FoundTemplate | null> {
+  const validatedPath = validateRepoPath(repoPath);
   // 1. Check individual file candidates (.md, .txt, extensionless)
   for (const candidate of TEMPLATE_CANDIDATES) {
     const parts = candidate.split("/");
-    let dir = repoPath;
+    let dir = validatedPath;
     let resolved = true;
     for (let i = 0; i < parts.length - 1; i++) {
       const found = await findFileInsensitive(dir, parts[i]);
@@ -79,8 +81,8 @@ export async function findRepoTemplate(repoPath: string): Promise<FoundTemplate 
   for (const parent of TEMPLATE_DIR_PARENTS) {
     try {
       const parentDir = parent
-        ? await findFileInsensitive(repoPath, parent)
-        : repoPath;
+        ? await findFileInsensitive(validatedPath, parent)
+        : validatedPath;
       if (!parentDir) continue;
 
       const tmplDir = await findFileInsensitive(parentDir, "PULL_REQUEST_TEMPLATE");
@@ -296,7 +298,8 @@ async function collectFiles(basePath: string, maxDepth: number): Promise<string[
 }
 
 export async function detectRepoDomain(repoPath: string): Promise<string> {
-  const files = await collectFiles(repoPath, 2);
+  const validatedPath = validateRepoPath(repoPath);
+  const files = await collectFiles(validatedPath, 2);
   const scores: Record<string, number> = {};
 
   for (const [domain, signals] of Object.entries(DOMAIN_SIGNALS)) {
@@ -426,11 +429,12 @@ export async function resolveTemplate(
   repoPath: string,
   config: Config
 ): Promise<ResolvedTemplate> {
+  const validatedPath = validateRepoPath(repoPath);
   const tmplConfig = config.pr.template;
 
   // 1. Repo template
   if (tmplConfig.detectRepoTemplate) {
-    const found = await findRepoTemplate(repoPath);
+    const found = await findRepoTemplate(validatedPath);
     if (found) {
       return {
         sections: parseTemplateToSections(found.content),
@@ -454,7 +458,7 @@ export async function resolveTemplate(
   }
 
   // 3. Auto-detect domain
-  const domain = await detectRepoDomain(repoPath);
+  const domain = await detectRepoDomain(validatedPath);
   if (domain !== "default") {
     return {
       sections: getPresetSections(domain),

@@ -5,6 +5,10 @@ vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
 }));
 
+vi.mock("../../src/utils/git.js", () => ({
+  validateRepoPath: vi.fn((p: string) => p),
+}));
+
 import { readdir, readFile } from "fs/promises";
 import type { Dirent } from "fs";
 import {
