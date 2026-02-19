@@ -59,6 +59,11 @@ import {
   getPrTemplate,
   getPrTemplateSchema,
 } from "./tools/get-pr-template.js";
+import {
+  generateChangelogTool,
+  generateChangelog,
+  generateChangelogSchema,
+} from "./tools/generate-changelog.js";
 
 // Safety annotations for all tools (Anthropic MCP requirement)
 // All tools in this server are read-only operations
@@ -123,6 +128,12 @@ const tools = [
     name: getPrTemplateTool.name,
     description: getPrTemplateTool.description,
     inputSchema: getPrTemplateTool.inputSchema,
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: generateChangelogTool.name,
+    description: generateChangelogTool.description,
+    inputSchema: generateChangelogTool.inputSchema,
     annotations: readOnlyAnnotations,
   },
 ];
@@ -260,6 +271,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "get_pr_template": {
         const input = getPrTemplateSchema.parse(args || {});
         const result = await getPrTemplate(input, config);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "generate_changelog": {
+        const input = generateChangelogSchema.parse(args || {});
+        const result = await generateChangelog(input, config);
         return {
           content: [
             {

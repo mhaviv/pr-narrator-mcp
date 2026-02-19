@@ -17,6 +17,8 @@ import {
   generateBestEffortTitle,
   categorizeChanges,
   generateStructuredBody,
+  mapCommitTypeToChangelogSection,
+  formatChangelogEntry,
 } from "../../src/utils/formatters.js";
 
 describe("formatters", () => {
@@ -757,6 +759,91 @@ describe("formatters", () => {
       expect(lines[0]).toContain("Swift source: 4 files");
       expect(lines[1]).toContain("Xcode project config: project.pbxproj");
       expect(lines[2]).toContain("Markdown/docs: README.md");
+    });
+  });
+
+  describe("mapCommitTypeToChangelogSection", () => {
+    it("should map feat to Added", () => {
+      expect(mapCommitTypeToChangelogSection("feat")).toBe("Added");
+    });
+
+    it("should map fix to Fixed", () => {
+      expect(mapCommitTypeToChangelogSection("fix")).toBe("Fixed");
+    });
+
+    it("should map docs to Documentation", () => {
+      expect(mapCommitTypeToChangelogSection("docs")).toBe("Documentation");
+    });
+
+    it("should map revert to Reverted", () => {
+      expect(mapCommitTypeToChangelogSection("revert")).toBe("Reverted");
+    });
+
+    it("should map style, refactor, perf, test, build, ci, chore to Changed", () => {
+      for (const type of ["style", "refactor", "perf", "test", "build", "ci", "chore"]) {
+        expect(mapCommitTypeToChangelogSection(type)).toBe("Changed");
+      }
+    });
+
+    it("should map other to Other", () => {
+      expect(mapCommitTypeToChangelogSection("other")).toBe("Other");
+    });
+
+    it("should map unknown types to Other", () => {
+      expect(mapCommitTypeToChangelogSection("random")).toBe("Other");
+      expect(mapCommitTypeToChangelogSection("")).toBe("Other");
+    });
+
+    it("should be case-insensitive", () => {
+      expect(mapCommitTypeToChangelogSection("FEAT")).toBe("Added");
+      expect(mapCommitTypeToChangelogSection("Fix")).toBe("Fixed");
+    });
+  });
+
+  describe("formatChangelogEntry", () => {
+    const baseEntry = {
+      title: "Add user authentication",
+      hash: "abc1234",
+      author: "alice",
+      scope: null,
+    };
+
+    it("should format keepachangelog without scope", () => {
+      const result = formatChangelogEntry(baseEntry, "keepachangelog", false);
+      expect(result).toBe("- Add user authentication (abc1234)");
+    });
+
+    it("should format keepachangelog with scope", () => {
+      const entry = { ...baseEntry, scope: "api" };
+      const result = formatChangelogEntry(entry, "keepachangelog", false);
+      expect(result).toBe("- **api**: Add user authentication (abc1234)");
+    });
+
+    it("should format github-release with author", () => {
+      const result = formatChangelogEntry(baseEntry, "github-release", true);
+      expect(result).toBe("- Add user authentication by **alice** in abc1234");
+    });
+
+    it("should format github-release without author", () => {
+      const result = formatChangelogEntry(baseEntry, "github-release", false);
+      expect(result).toBe("- Add user authentication in abc1234");
+    });
+
+    it("should format github-release with scope and author", () => {
+      const entry = { ...baseEntry, scope: "auth" };
+      const result = formatChangelogEntry(entry, "github-release", true);
+      expect(result).toBe("- **auth**: Add user authentication by **alice** in abc1234");
+    });
+
+    it("should format plain without scope", () => {
+      const result = formatChangelogEntry(baseEntry, "plain", false);
+      expect(result).toBe("- Add user authentication");
+    });
+
+    it("should format plain with scope", () => {
+      const entry = { ...baseEntry, scope: "auth" };
+      const result = formatChangelogEntry(entry, "plain", false);
+      expect(result).toBe("- [auth] Add user authentication");
     });
   });
 });

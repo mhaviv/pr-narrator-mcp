@@ -42,7 +42,7 @@ src/
 ├── config/
 │   ├── schema.ts                   # Zod config schemas, defaults, type exports
 │   └── loader.ts                   # Config loading from MCP env vars
-├── tools/                          # One file per MCP tool (8 tools total)
+├── tools/                          # One file per MCP tool (10 tools total)
 │   ├── get-config.ts
 │   ├── analyze-git-changes.ts
 │   ├── generate-commit-message.ts
@@ -50,7 +50,9 @@ src/
 │   ├── extract-tickets.ts
 │   ├── generate-pr-title.ts
 │   ├── generate-pr-description.ts
-│   └── generate-pr.ts
+│   ├── generate-pr.ts
+│   ├── get-pr-template.ts
+│   └── generate-changelog.ts
 └── utils/
     ├── git.ts                      # Git operations via simple-git, path validation, branch detection
     └── formatters.ts               # String formatting, prefix handling, file categorization
