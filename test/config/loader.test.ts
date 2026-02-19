@@ -6,6 +6,7 @@ describe("getConfig", () => {
   const envKeys = [
     "BASE_BRANCH", "TICKET_PATTERN", "TICKET_LINK",
     "PREFIX_STYLE", "DEFAULT_REPO_PATH", "INCLUDE_STATS", "BRANCH_PREFIXES",
+    "PR_TEMPLATE_PRESET", "PR_DETECT_REPO_TEMPLATE",
   ];
 
   beforeEach(() => {
@@ -98,6 +99,46 @@ describe("getConfig", () => {
     const config = getConfig();
     expect(config.commit.includeStats).toBe(false);
     expect(config.commit.prefix.style).toBe("bracketed");
+  });
+
+  describe("PR template env vars", () => {
+    it("should parse PR_TEMPLATE_PRESET", () => {
+      process.env.PR_TEMPLATE_PRESET = "mobile";
+      const config = getConfig();
+      expect(config.pr.template.preset).toBe("mobile");
+    });
+
+    it("should ignore invalid PR_TEMPLATE_PRESET", () => {
+      process.env.PR_TEMPLATE_PRESET = "invalid_preset";
+      const config = getConfig();
+      expect(config.pr.template.preset).toBeUndefined();
+    });
+
+    it("should parse PR_DETECT_REPO_TEMPLATE=false", () => {
+      process.env.PR_DETECT_REPO_TEMPLATE = "false";
+      const config = getConfig();
+      expect(config.pr.template.detectRepoTemplate).toBe(false);
+    });
+
+    it("should parse PR_DETECT_REPO_TEMPLATE=0", () => {
+      process.env.PR_DETECT_REPO_TEMPLATE = "0";
+      const config = getConfig();
+      expect(config.pr.template.detectRepoTemplate).toBe(false);
+    });
+
+    it("should parse PR_DETECT_REPO_TEMPLATE=true", () => {
+      process.env.PR_DETECT_REPO_TEMPLATE = "true";
+      const config = getConfig();
+      expect(config.pr.template.detectRepoTemplate).toBe(true);
+    });
+
+    it("should combine PR_TEMPLATE_PRESET with other env vars", () => {
+      process.env.PR_TEMPLATE_PRESET = "backend";
+      process.env.BASE_BRANCH = "develop";
+      const config = getConfig();
+      expect(config.pr.template.preset).toBe("backend");
+      expect(config.baseBranch).toBe("develop");
+    });
   });
 
   describe("TICKET_PATTERN regex safety", () => {

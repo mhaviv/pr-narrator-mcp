@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generatePr } from "../../src/tools/generate-pr.js";
-import { defaultConfig } from "../../src/config/schema.js";
 
 // Mock the git utilities (keep safeRegex as real implementation since it's pure logic)
 vi.mock("../../src/utils/git.js", async (importOriginal) => {
@@ -23,6 +21,32 @@ vi.mock("../../src/utils/git.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../../src/utils/template.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/utils/template.js")>();
+  return {
+    ...actual,
+    resolveTemplate: vi.fn().mockResolvedValue({
+      sections: [
+        { name: "Purpose", required: true, autoPopulate: "purpose", condition: { type: "always" }, format: "markdown" },
+        { name: "Ticket", required: false, autoPopulate: "extracted", condition: { type: "has_tickets" }, format: "markdown" },
+        { name: "Type of Change", required: false, autoPopulate: "change_type", condition: { type: "always" }, format: "markdown" },
+        { name: "Changes", required: false, autoPopulate: "commits", condition: { type: "commit_count_gt", threshold: 1 }, format: "markdown" },
+        { name: "Test Plan", required: true, autoPopulate: "none", condition: { type: "always" }, format: "markdown" },
+        { name: "Checklist", required: false, autoPopulate: "checklist", format: "checklist", condition: { type: "always" } },
+      ],
+      source: "default",
+      detectedDomain: null,
+      repoTemplatePath: null,
+      rawTemplate: null,
+    }),
+    evaluateCondition: actual.evaluateCondition,
+    generateSectionContent: actual.generateSectionContent,
+  };
+});
+
+import { generatePr } from "../../src/tools/generate-pr.js";
+import { defaultConfig } from "../../src/config/schema.js";
+
 import {
   getCurrentBranch,
   getBranchChanges,
@@ -30,6 +54,7 @@ import {
   extractBranchPrefix,
   extractTicketsFromCommits,
 } from "../../src/utils/git.js";
+import { resolveTemplate } from "../../src/utils/template.js";
 
 describe("generatePr", () => {
   const testConfig = {
@@ -301,20 +326,58 @@ describe("generatePr", () => {
     });
 
     it("should use provided test plan", async () => {
-      const configWithTestPlan = {
-        ...testConfig,
-        pr: {
-          ...testConfig.pr,
-          sections: [
-            ...testConfig.pr.sections,
-            { name: "Test Plan", required: false },
-          ],
-        },
-      };
-
-      const result = await generatePr({ testPlan: "Manual testing completed" }, configWithTestPlan);
+      const result = await generatePr({ testPlan: "Manual testing completed" }, testConfig);
 
       expect(result.description).toContain("Manual testing completed");
+    });
+  });
+
+  describe("template system", () => {
+    it("should use resolved template sections", async () => {
+      const result = await generatePr({}, testConfig);
+
+      // Default template has Purpose and Test Plan as required
+      expect(result.description).toContain("## Purpose");
+    });
+
+    it("should filter sections by condition evaluation", async () => {
+      vi.mocked(extractTicketFromBranch).mockReturnValue(null);
+      vi.mocked(extractTicketsFromCommits).mockResolvedValue([]);
+
+      const result = await generatePr({}, testConfig);
+
+      // Ticket section should be omitted (has_tickets condition, no tickets)
+      expect(result.description).not.toContain("## Ticket");
+    });
+
+    it("should include templateSource and detectedDomain in context", async () => {
+      const result = await generatePr({}, testConfig);
+
+      expect(result.context.templateSource).toBe("default");
+      expect(result.context.detectedDomain).toBeNull();
+    });
+
+    it("should pass templatePreset to resolveTemplate", async () => {
+      await generatePr({ templatePreset: "mobile" }, testConfig);
+
+      const calls = vi.mocked(resolveTemplate).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const configArg = calls[0][1];
+      expect(configArg.pr.template.preset).toBe("mobile");
+    });
+
+    it("should generate checklist content for checklist autoPopulate", async () => {
+      const result = await generatePr({}, testConfig);
+
+      expect(result.description).toContain("## Checklist");
+      expect(result.description).toContain("self-reviewed");
+    });
+
+    it("should generate change type content for change_type autoPopulate", async () => {
+      const result = await generatePr({}, testConfig);
+
+      expect(result.description).toContain("## Type of Change");
+      expect(result.description).toContain("New feature");
     });
   });
 });

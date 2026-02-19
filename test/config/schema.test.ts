@@ -17,11 +17,20 @@ describe("configSchema", () => {
     });
 
     it("should have default PR sections", () => {
-      expect(defaultConfig.pr.sections).toHaveLength(2);
-      expect(defaultConfig.pr.sections[0].name).toBe("Ticket");
-      expect(defaultConfig.pr.sections[0].autoPopulate).toBe("extracted");
-      expect(defaultConfig.pr.sections[1].name).toBe("Purpose");
-      expect(defaultConfig.pr.sections[1].autoPopulate).toBe("purpose");
+      expect(defaultConfig.pr.sections).toHaveLength(6);
+      expect(defaultConfig.pr.sections[0].name).toBe("Purpose");
+      expect(defaultConfig.pr.sections[0].autoPopulate).toBe("purpose");
+      expect(defaultConfig.pr.sections[1].name).toBe("Ticket");
+      expect(defaultConfig.pr.sections[1].autoPopulate).toBe("extracted");
+      expect(defaultConfig.pr.sections[2].name).toBe("Type of Change");
+      expect(defaultConfig.pr.sections[3].name).toBe("Changes");
+      expect(defaultConfig.pr.sections[4].name).toBe("Test Plan");
+      expect(defaultConfig.pr.sections[5].name).toBe("Checklist");
+    });
+
+    it("should have default template config", () => {
+      expect(defaultConfig.pr.template.detectRepoTemplate).toBe(true);
+      expect(defaultConfig.pr.template.preset).toBeUndefined();
     });
   });
 

@@ -1,13 +1,14 @@
 import { z } from "zod";
-import type { Config, PrSection } from "../config/schema.js";
+import type { Config } from "../config/schema.js";
 import {
   getCurrentBranch,
   getBranchChanges,
   extractTicketFromBranch,
+  extractBranchPrefix,
   extractTicketsFromCommits,
   getDefaultBranch,
 } from "../utils/git.js";
-import { generatePurposeSummary } from "../utils/formatters.js";
+import { resolveTemplate, evaluateCondition, generateSectionContent, VALID_PRESETS } from "../utils/template.js";
 
 export const generatePrDescriptionSchema = z.object({
   repoPath: z
@@ -26,6 +27,10 @@ export const generatePrDescriptionSchema = z.object({
     .record(z.string())
     .optional()
     .describe("Additional section content keyed by section name"),
+  templatePreset: z
+    .string()
+    .optional()
+    .describe("Force a specific template preset (e.g., mobile, frontend, backend, devops, security, ml)."),
 });
 
 export type GeneratePrDescriptionInput = z.infer<typeof generatePrDescriptionSchema>;
@@ -45,61 +50,9 @@ export interface GeneratePrDescriptionResult {
     baseBranch: string;
     commitCount: number;
     tickets: string[];
+    templateSource: string | null;
+    detectedDomain: string | null;
   };
-}
-
-function generateSectionContent(
-  section: PrSection,
-  context: {
-    commits: Array<{ hash: string; message: string }>;
-    files: Array<{ path: string; additions: number; deletions: number }>;
-    tickets: string[];
-    ticketLinkFormat: string | undefined;
-    providedContent: Record<string, string | undefined>;
-    branchName: string | null;
-  }
-): string {
-  const sectionNameLower = section.name.toLowerCase();
-
-  const byName = context.providedContent[section.name];
-  if (byName) {
-    return byName;
-  }
-  const byLower = context.providedContent[sectionNameLower];
-  if (byLower) {
-    return byLower;
-  }
-
-  if (section.autoPopulate === "commits") {
-    if (context.commits.length === 0) {
-      return "_No commits found_";
-    }
-    return context.commits
-      .map((c) => `- ${c.message} (${c.hash})`)
-      .join("\n");
-  }
-
-  if (section.autoPopulate === "extracted") {
-    if (context.tickets.length === 0) {
-      return ""; // No tickets = omit section entirely
-    }
-    // Plain URLs, one per line (consistent with generate-pr)
-    return context.tickets
-      .map((t) => context.ticketLinkFormat
-        ? context.ticketLinkFormat.replace("{ticket}", t)
-        : t)
-      .join("\n");
-  }
-
-  if (section.autoPopulate === "purpose") {
-    return generatePurposeSummary(context.commits, context.files, context.branchName);
-  }
-
-  if (section.required) {
-    return `_[Add ${section.name.toLowerCase()} here]_`;
-  }
-
-  return "";
 }
 
 /**
@@ -110,13 +63,29 @@ export async function generatePrDescription(
   config: Config
 ): Promise<GeneratePrDescriptionResult> {
   const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
-  const prConfig = config.pr;
+
+  // Build effective config, potentially overriding template preset
+  let effectiveConfig = config;
+  if (input.templatePreset && (VALID_PRESETS as readonly string[]).includes(input.templatePreset)) {
+    effectiveConfig = {
+      ...config,
+      pr: {
+        ...config.pr,
+        template: {
+          ...config.pr.template,
+          preset: input.templatePreset as Config["pr"]["template"]["preset"],
+          detectRepoTemplate: false,
+        },
+      },
+    };
+  }
 
   // Auto-detect base branch from repo, fall back to config value
   const baseBranch = await getDefaultBranch(repoPath, config.baseBranch);
 
   // Get branch info
   const branchName = await getCurrentBranch(repoPath);
+  const branchPrefix = branchName ? extractBranchPrefix(branchName, config.branchPrefixes) : null;
   const branchChanges = await getBranchChanges(repoPath, baseBranch);
 
   // Get tickets
@@ -150,7 +119,6 @@ export async function generatePrDescription(
   }
 
   const providedContent: Record<string, string | undefined> = {
-    // Map summary input to both Summary and Purpose section names
     summary: input.summary,
     Summary: input.summary,
     purpose: input.summary,
@@ -164,7 +132,16 @@ export async function generatePrDescription(
   const files = branchChanges?.files ?? [];
   const sections: GeneratedSection[] = [];
 
-  for (const sectionConfig of prConfig.sections) {
+  // Resolve the template (repo template > preset > auto-detect > default)
+  const resolved = await resolveTemplate(repoPath, effectiveConfig);
+  const templateSections = resolved.sections;
+  const filePaths = files.map((f) => f.path);
+
+  for (const sectionConfig of templateSections) {
+    if (!evaluateCondition(sectionConfig.condition, filePaths, tickets, commits.length)) {
+      continue;
+    }
+
     const content = generateSectionContent(sectionConfig, {
       commits,
       files,
@@ -172,6 +149,8 @@ export async function generatePrDescription(
       ticketLinkFormat: config.ticketLinkFormat,
       providedContent,
       branchName,
+      branchPrefix,
+      domain: resolved.detectedDomain,
     });
 
     if (!content && !sectionConfig.required) {
@@ -203,6 +182,8 @@ export async function generatePrDescription(
       baseBranch,
       commitCount: commits.length,
       tickets,
+      templateSource: resolved.source,
+      detectedDomain: resolved.detectedDomain,
     },
   };
 }
@@ -234,6 +215,10 @@ Auto-populates:
         type: "object",
         description: "Additional section content keyed by section name",
         additionalProperties: { type: "string" },
+      },
+      templatePreset: {
+        type: "string",
+        description: "Force a specific template preset (default, minimal, detailed, mobile, frontend, backend, devops, security, ml).",
       },
     },
   },

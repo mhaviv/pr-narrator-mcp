@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Config, PrSection } from "../config/schema.js";
+import type { Config } from "../config/schema.js";
 import {
   getCurrentBranch,
   getBranchChanges,
@@ -9,7 +9,8 @@ import {
   detectBaseBranch,
   safeRegex,
 } from "../utils/git.js";
-import { formatPrefix, generatePurposeSummary, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
+import { formatPrefix, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
+import { resolveTemplate, evaluateCondition, generateSectionContent, VALID_PRESETS } from "../utils/template.js";
 
 export const generatePrSchema = z.object({
   repoPath: z
@@ -36,6 +37,10 @@ export const generatePrSchema = z.object({
     .record(z.string())
     .optional()
     .describe("Additional section content keyed by section name"),
+  templatePreset: z
+    .string()
+    .optional()
+    .describe("Force a specific template preset (e.g., mobile, frontend, backend, devops, security, ml)."),
 });
 
 export type GeneratePrInput = z.infer<typeof generatePrSchema>;
@@ -53,6 +58,8 @@ export interface GeneratePrResult {
     commitCount: number;
     tickets: string[];
     filesChanged: number;
+    templateSource: string | null;
+    detectedDomain: string | null;
   };
   /** Context for AI to enhance the Purpose section */
   purposeContext: {
@@ -72,60 +79,6 @@ export interface GeneratePrResult {
   warnings: string[];
 }
 
-function generateSectionContent(
-  section: PrSection,
-  context: {
-    commits: Array<{ hash: string; message: string }>;
-    files: Array<{ path: string; additions: number; deletions: number }>;
-    tickets: string[];
-    ticketLinkFormat: string | undefined;
-    providedContent: Record<string, string | undefined>;
-    branchName: string | null;
-  }
-): string {
-  const sectionNameLower = section.name.toLowerCase();
-
-  const byName = context.providedContent[section.name];
-  if (byName) {
-    return byName;
-  }
-  const byLower = context.providedContent[sectionNameLower];
-  if (byLower) {
-    return byLower;
-  }
-
-  if (section.autoPopulate === "commits") {
-    if (context.commits.length === 0) {
-      return "_No commits found_";
-    }
-    return context.commits
-      .map((c) => `- ${c.message} (${c.hash})`)
-      .join("\n");
-  }
-
-  if (section.autoPopulate === "extracted") {
-    if (context.tickets.length === 0) {
-      return ""; // No tickets = omit section entirely
-    }
-    // Plain URLs, one per line (no markdown formatting)
-    return context.tickets
-      .map((t) => context.ticketLinkFormat 
-        ? context.ticketLinkFormat.replace("{ticket}", t)
-        : t)
-      .join("\n");
-  }
-
-  if (section.autoPopulate === "purpose") {
-    return generatePurposeSummary(context.commits, context.files, context.branchName);
-  }
-
-  if (section.required) {
-    return `_[Add ${section.name.toLowerCase()} here]_`;
-  }
-
-  return "";
-}
-
 /**
  * Generate a complete PR with title and description
  */
@@ -135,8 +88,26 @@ export async function generatePr(
 ): Promise<GeneratePrResult> {
   const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
   const warnings: string[] = [];
-  const prConfig = config.pr;
-  const prTitleConfig = prConfig.title;
+
+  // Build effective config, potentially overriding template preset
+  let effectiveConfig = config;
+  if (input.templatePreset && (VALID_PRESETS as readonly string[]).includes(input.templatePreset)) {
+    effectiveConfig = {
+      ...config,
+      pr: {
+        ...config.pr,
+        template: {
+          ...config.pr.template,
+          preset: input.templatePreset as Config["pr"]["template"]["preset"],
+          detectRepoTemplate: false,
+        },
+      },
+    };
+  } else if (input.templatePreset) {
+    warnings.push(`Unknown templatePreset "${input.templatePreset}", using default resolution.`);
+  }
+
+  const prTitleConfig = effectiveConfig.pr.title;
 
   // Detect base branch - prefer input parameter, then config, then auto-detect
   const baseBranchResult = await detectBaseBranch(
@@ -249,7 +220,16 @@ export async function generatePr(
   const descriptionParts: string[] = [];
   const files = branchChanges?.files ?? [];
 
-  for (const sectionConfig of prConfig.sections) {
+  // Resolve the template (repo template > preset > auto-detect > default)
+  const resolved = await resolveTemplate(repoPath, effectiveConfig);
+  const templateSections = resolved.sections;
+  const filePaths = files.map((f) => f.path);
+
+  for (const sectionConfig of templateSections) {
+    if (!evaluateCondition(sectionConfig.condition, filePaths, tickets, commits.length)) {
+      continue;
+    }
+
     const content = generateSectionContent(sectionConfig, {
       commits,
       files,
@@ -257,6 +237,8 @@ export async function generatePr(
       ticketLinkFormat: config.ticketLinkFormat,
       providedContent,
       branchName,
+      branchPrefix,
+      domain: resolved.detectedDomain,
     });
 
     if (!content && !sectionConfig.required) {
@@ -360,6 +342,8 @@ NOT THIS:
       commitCount: commits.length,
       tickets,
       filesChanged,
+      templateSource: resolved.source,
+      detectedDomain: resolved.detectedDomain,
     },
     purposeContext,
     purposeGuidelines,
@@ -417,6 +401,10 @@ Show ONLY the final title + rewritten description. Never mention "MCP provided" 
         type: "object",
         description: "Additional section content keyed by section name",
         additionalProperties: { type: "string" },
+      },
+      templatePreset: {
+        type: "string",
+        description: "Force a specific template preset (default, minimal, detailed, mobile, frontend, backend, devops, security, ml).",
       },
     },
   },
