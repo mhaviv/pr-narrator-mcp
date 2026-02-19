@@ -8,7 +8,7 @@ import {
   extractTicketsFromCommits,
   getDefaultBranch,
 } from "../utils/git.js";
-import { resolveTemplate, evaluateCondition, generateSectionContent } from "../utils/template.js";
+import { resolveTemplate, evaluateCondition, generateSectionContent, VALID_PRESETS } from "../utils/template.js";
 
 export const generatePrDescriptionSchema = z.object({
   repoPath: z
@@ -66,7 +66,7 @@ export async function generatePrDescription(
 
   // Build effective config, potentially overriding template preset
   let effectiveConfig = config;
-  if (input.templatePreset) {
+  if (input.templatePreset && VALID_PRESETS.has(input.templatePreset)) {
     effectiveConfig = {
       ...config,
       pr: {

@@ -51,7 +51,12 @@ export interface FoundTemplate {
 }
 
 export async function findRepoTemplate(repoPath: string): Promise<FoundTemplate | null> {
-  const validatedPath = validateRepoPath(repoPath);
+  let validatedPath: string;
+  try {
+    validatedPath = validateRepoPath(repoPath);
+  } catch {
+    return null;
+  }
   // 1. Check individual file candidates (.md, .txt, extensionless)
   for (const candidate of TEMPLATE_CANDIDATES) {
     const parts = candidate.split("/");
@@ -89,9 +94,22 @@ export async function findRepoTemplate(repoPath: string): Promise<FoundTemplate 
       if (!tmplDir) continue;
 
       const entries = await readdir(tmplDir);
-      const templateFile = entries.find((e) => isTemplateFile(e));
-      if (templateFile) {
-        const filePath = join(tmplDir, templateFile);
+      const templateEntries = entries.filter((e) => isTemplateFile(e));
+      if (templateEntries.length > 0) {
+        templateEntries.sort((a, b) => {
+          const score = (name: string): number => {
+            const lower = name.toLowerCase();
+            if (lower === "default.md") return 0;
+            if (lower === "default.txt") return 1;
+            if (lower.endsWith(".md")) return 2;
+            if (lower.endsWith(".txt")) return 3;
+            return 4;
+          };
+          const diff = score(a) - score(b);
+          if (diff !== 0) return diff;
+          return a.toLowerCase().localeCompare(b.toLowerCase());
+        });
+        const filePath = join(tmplDir, templateEntries[0]);
         const content = await readFile(filePath, "utf-8");
         return { content, filePath };
       }
@@ -298,38 +316,48 @@ async function collectFiles(basePath: string, maxDepth: number): Promise<string[
 }
 
 export async function detectRepoDomain(repoPath: string): Promise<string> {
-  const validatedPath = validateRepoPath(repoPath);
-  const files = await collectFiles(validatedPath, 2);
-  const scores: Record<string, number> = {};
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const files = await collectFiles(validatedPath, 2);
+    const scores: Record<string, number> = {};
 
-  for (const [domain, signals] of Object.entries(DOMAIN_SIGNALS)) {
-    let score = 0;
-    for (const file of files) {
-      for (const { pattern, weight } of signals) {
-        if (pattern.test(file)) {
-          score += weight;
+    for (const [domain, signals] of Object.entries(DOMAIN_SIGNALS)) {
+      let score = 0;
+      for (const file of files) {
+        for (const { pattern, weight } of signals) {
+          if (pattern.test(file)) {
+            score += weight;
+          }
         }
       }
+      scores[domain] = score;
     }
-    scores[domain] = score;
+
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    if (sorted.length === 0) return "default";
+
+    const [topDomain, topScore] = sorted[0];
+    const secondScore = sorted.length > 1 ? sorted[1][1] : 0;
+
+    if (topScore >= 3 && topScore >= secondScore * 2) {
+      return topDomain;
+    }
+
+    return "default";
+  } catch {
+    return "default";
   }
-
-  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-  if (sorted.length === 0) return "default";
-
-  const [topDomain, topScore] = sorted[0];
-  const secondScore = sorted.length > 1 ? sorted[1][1] : 0;
-
-  if (topScore >= 3 && topScore >= secondScore * 2) {
-    return topDomain;
-  }
-
-  return "default";
 }
 
 // ---------------------------------------------------------------------------
 // Preset definitions
 // ---------------------------------------------------------------------------
+
+export const VALID_PRESETS = new Set([
+  "default", "minimal", "detailed",
+  "mobile", "frontend", "backend",
+  "devops", "security", "ml",
+]);
 
 const PRESETS: Record<string, PrSection[]> = {
   default: [
@@ -425,58 +453,64 @@ export function getPresetSections(preset: string): PrSection[] {
 // Template resolution
 // ---------------------------------------------------------------------------
 
+const DEFAULT_RESOLVED_TEMPLATE: ResolvedTemplate = {
+  sections: getPresetSections("default"),
+  source: "default",
+  detectedDomain: null,
+  repoTemplatePath: null,
+  rawTemplate: null,
+};
+
 export async function resolveTemplate(
   repoPath: string,
   config: Config
 ): Promise<ResolvedTemplate> {
-  const validatedPath = validateRepoPath(repoPath);
-  const tmplConfig = config.pr.template;
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const tmplConfig = config.pr.template;
 
-  // 1. Repo template
-  if (tmplConfig.detectRepoTemplate) {
-    const found = await findRepoTemplate(validatedPath);
-    if (found) {
+    // 1. Repo template
+    if (tmplConfig.detectRepoTemplate) {
+      const found = await findRepoTemplate(validatedPath);
+      if (found) {
+        return {
+          sections: parseTemplateToSections(found.content),
+          source: "repo",
+          detectedDomain: null,
+          repoTemplatePath: found.filePath,
+          rawTemplate: found.content,
+        };
+      }
+    }
+
+    // 2. Explicit preset
+    if (tmplConfig.preset) {
       return {
-        sections: parseTemplateToSections(found.content),
-        source: "repo",
-        detectedDomain: null,
-        repoTemplatePath: found.filePath,
-        rawTemplate: found.content,
+        sections: getPresetSections(tmplConfig.preset),
+        source: "preset",
+        detectedDomain: tmplConfig.preset,
+        repoTemplatePath: null,
+        rawTemplate: null,
       };
     }
-  }
 
-  // 2. Explicit preset
-  if (tmplConfig.preset) {
-    return {
-      sections: getPresetSections(tmplConfig.preset),
-      source: "preset",
-      detectedDomain: tmplConfig.preset,
-      repoTemplatePath: null,
-      rawTemplate: null,
-    };
-  }
+    // 3. Auto-detect domain
+    const domain = await detectRepoDomain(validatedPath);
+    if (domain !== "default") {
+      return {
+        sections: getPresetSections(domain),
+        source: "auto-detected",
+        detectedDomain: domain,
+        repoTemplatePath: null,
+        rawTemplate: null,
+      };
+    }
 
-  // 3. Auto-detect domain
-  const domain = await detectRepoDomain(validatedPath);
-  if (domain !== "default") {
-    return {
-      sections: getPresetSections(domain),
-      source: "auto-detected",
-      detectedDomain: domain,
-      repoTemplatePath: null,
-      rawTemplate: null,
-    };
+    // 4. Default
+    return DEFAULT_RESOLVED_TEMPLATE;
+  } catch {
+    return DEFAULT_RESOLVED_TEMPLATE;
   }
-
-  // 4. Default
-  return {
-    sections: getPresetSections("default"),
-    source: "default",
-    detectedDomain: null,
-    repoTemplatePath: null,
-    rawTemplate: null,
-  };
 }
 
 // ---------------------------------------------------------------------------

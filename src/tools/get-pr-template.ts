@@ -7,7 +7,7 @@ import {
   extractTicketFromBranch,
   extractTicketsFromCommits,
 } from "../utils/git.js";
-import { resolveTemplate, evaluateCondition } from "../utils/template.js";
+import { resolveTemplate, evaluateCondition, VALID_PRESETS } from "../utils/template.js";
 
 export const getPrTemplateSchema = z.object({
   repoPath: z
@@ -45,9 +45,9 @@ export async function getPrTemplate(
 ): Promise<GetPrTemplateResult> {
   const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
 
-  // If a preset is explicitly requested, override config
+  // If a preset is explicitly requested and valid, override config
   let effectiveConfig = config;
-  if (input.preset) {
+  if (input.preset && VALID_PRESETS.has(input.preset)) {
     effectiveConfig = {
       ...config,
       pr: {

@@ -10,7 +10,7 @@ import {
   safeRegex,
 } from "../utils/git.js";
 import { formatPrefix, extractTitleFromCommits, cleanCommitTitle } from "../utils/formatters.js";
-import { resolveTemplate, evaluateCondition, generateSectionContent } from "../utils/template.js";
+import { resolveTemplate, evaluateCondition, generateSectionContent, VALID_PRESETS } from "../utils/template.js";
 
 export const generatePrSchema = z.object({
   repoPath: z
@@ -91,7 +91,7 @@ export async function generatePr(
 
   // Build effective config, potentially overriding template preset
   let effectiveConfig = config;
-  if (input.templatePreset) {
+  if (input.templatePreset && VALID_PRESETS.has(input.templatePreset)) {
     effectiveConfig = {
       ...config,
       pr: {
@@ -103,6 +103,8 @@ export async function generatePr(
         },
       },
     };
+  } else if (input.templatePreset) {
+    warnings.push(`Unknown templatePreset "${input.templatePreset}", using default resolution.`);
   }
 
   const prTitleConfig = effectiveConfig.pr.title;
