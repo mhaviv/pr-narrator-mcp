@@ -111,7 +111,9 @@ export async function getPrTemplate(
     source: resolved.source,
     repoTemplatePath: resolved.repoTemplatePath,
     detectedDomain: resolved.detectedDomain,
-    preset: input.preset ?? config.pr.template.preset ?? null,
+    preset: (input.preset && (VALID_PRESETS as readonly string[]).includes(input.preset))
+      ? input.preset
+      : config.pr.template.preset ?? null,
     sections,
     rawTemplate: resolved.rawTemplate,
   };

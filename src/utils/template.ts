@@ -300,7 +300,7 @@ async function collectFiles(basePath: string, maxDepth: number): Promise<string[
         if (results.length >= MAX_FILES) return;
         if (SKIP_DIRS.has(entry.name)) continue;
         const full = join(dir, entry.name);
-        const rel = relative(basePath, full);
+        const rel = relative(basePath, full).replace(/\\/g, "/");
         results.push(rel);
         if (entry.isDirectory()) {
           await walk(full, depth + 1);
@@ -682,7 +682,7 @@ export function generateSectionContent(
   }
 
   if (section.autoPopulate === "extracted") {
-    if (context.tickets.length === 0) return "";
+    if (context.tickets.length === 0) return section.placeholder ?? "";
     return context.tickets
       .map((t) => (context.ticketLinkFormat ? context.ticketLinkFormat.replace("{ticket}", t) : t))
       .join("\n");
