@@ -201,7 +201,7 @@ This means switching between repos (iOS app, Express API, Terraform infra) autom
 
 ### Domain Auto-Detection
 
-PR Narrator scans the top 2–3 levels of the repo file tree and scores files against domain signal patterns. The domain with the highest score wins, as long as it reaches a minimum threshold.
+PR Narrator scans the top 3 levels of the repo file tree and scores files against domain signal patterns. The domain with the highest score wins, as long as it reaches a minimum threshold.
 
 | Domain | Key Signals | Sections Added |
 |--------|-------------|----------------|
