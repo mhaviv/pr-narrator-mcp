@@ -10,7 +10,7 @@
 
 > Generate consistent commit messages and PR content automatically.
 
-An MCP server that generates commit messages and PR descriptions based on your git changes.
+An MCP server that generates commit messages and PR descriptions based on your git changes. It auto-detects your repo's domain (mobile, frontend, backend, devops, security, ML) and applies the right PR template — no config needed.
 
 ## Install
 
@@ -121,6 +121,8 @@ All settings are optional env vars in MCP JSON:
 | `TICKET_LINK` | Ticket URL template | `https://jira.example.com/browse/{ticket}` |
 | `PREFIX_STYLE` | Prefix format | `capitalized` or `bracketed` |
 | `DEFAULT_REPO_PATH` | Fallback repo path (single-repo workflows) | `/Users/me/my-project` |
+| `PR_TEMPLATE_PRESET` | Force a PR template preset | `mobile`, `backend`, `devops` |
+| `PR_DETECT_REPO_TEMPLATE` | Enable/disable repo template detection | `true` (default) or `false` |
 
 If `BASE_BRANCH` is not set, it auto-detects from the repo (main, master, develop).
 
@@ -128,39 +130,54 @@ If `BASE_BRANCH` is not set, it auto-detects from the repo (main, master, develo
 
 ## Tools
 
-### generate_pr
-Generate PR title and description with context for AI enhancement.
+### PR Generation
+
+#### generate_pr
+Generate a complete PR with title, description, and context for AI enhancement. Automatically resolves the best template for the repo (see [PR Templates](#pr-templates)).
 
 Returns:
-- `title` - PR title (placeholder derived from branch/commits - AI should rewrite)
-- `description` - PR description with placeholder Purpose
-- `purposeContext` - ALL commit titles, ALL commit bullets, test info, file count
-- `purposeGuidelines` - Instructions for AI to rewrite title and Purpose from ALL data
+- `title` — PR title (placeholder derived from branch/commits — AI should rewrite)
+- `description` — PR description with sections from the resolved template
+- `purposeContext` — ALL commit titles, ALL commit bullets, test info, file count
+- `purposeGuidelines` — Instructions for AI to rewrite title and Purpose from ALL data
 
 **Important:** Both the title and Purpose are placeholders. The AI must read ALL `purposeContext.commitTitles` and `purposeContext.commitBullets` to synthesize a title and description that reflects the full scope of changes.
 
-PR description includes:
-- **Ticket** - Link extracted from branch name (omitted if none found)
-- **Purpose** - Base summary for AI to enhance
+Optional `templatePreset` parameter to force a specific template (e.g., `mobile`, `backend`).
 
-### generate_commit_message
+#### generate_pr_title
+Generate a PR title based on branch info and commits.
+
+#### generate_pr_description
+Generate a PR description with auto-populated sections. Same template resolution as `generate_pr` but returns only the description. Accepts optional `templatePreset` and `summary` parameters.
+
+#### get_pr_template
+Preview the resolved PR template for a repo before generating. Shows which sections will appear based on the repo's template file, domain auto-detection, or configured preset. Useful for understanding what a PR will look like before calling `generate_pr`.
+
+Returns the template source (`repo`, `preset`, `auto-detected`, or `default`), detected domain, and each section's visibility based on current branch changes.
+
+### Commit Messages
+
+#### generate_commit_message
 Prepare commit message context from staged changes.
 
 Two modes:
 - **With `summary` param (recommended):** Returns a ready-to-use commit message with proper prefix/formatting
 - **Without `summary`:** Returns placeholder title + diff + guidelines for AI to compose the message
 
-### analyze_git_changes
-Analyze staged changes and branch info.
+#### validate_commit_message
+Check a commit message against configured rules (length, format, capitalization, imperative mood).
 
-### extract_tickets
-Find tickets in branch name and commits.
+### Repository Analysis
 
-### validate_commit_message
-Check commit message against rules.
+#### analyze_git_changes
+Analyze the current repository state: staged changes, branch info, working tree status, and file categorization.
 
-### get_config
-See current settings.
+#### extract_tickets
+Find ticket numbers in the branch name and commit messages using the configured `TICKET_PATTERN`.
+
+#### get_config
+See current settings and their resolved values.
 
 ## Prefix Examples
 
@@ -170,6 +187,65 @@ See current settings.
 | `task/update-readme` | `Task: ` |
 | `bug/fix-crash` | `Bug: ` |
 | `main` | (no prefix) |
+
+## PR Templates
+
+PR Narrator automatically selects the best template for each repository through a resolution pipeline:
+
+1. **Repo template** — if a `PULL_REQUEST_TEMPLATE.md` exists in the repo (`.github/`, root, or `docs/`), it's parsed into sections
+2. **Explicit preset** — if `PR_TEMPLATE_PRESET` is set or `templatePreset` is passed to a tool
+3. **Auto-detected domain** — the repo's file tree is scanned and scored to detect its domain
+4. **Default** — a universal 6-section template
+
+This means switching between repos (iOS app, Express API, Terraform infra) automatically uses the right template with zero configuration.
+
+### Domain Auto-Detection
+
+PR Narrator scans the top 3 levels of the repo file tree and scores files against domain signal patterns. The domain with the highest score wins, as long as it reaches a minimum threshold.
+
+| Domain | Key Signals | Sections Added |
+|--------|-------------|----------------|
+| **mobile** | `.swift`, `.kt`, `.xcodeproj`, `AndroidManifest.xml` | Screenshots, Device Testing, Accessibility |
+| **frontend** | `.tsx`, `.vue`, `next.config`, `vite.config` | Screenshots / Visual Changes, Browser Compatibility, Accessibility |
+| **backend** | `.go`, `.rs`, `migrations/`, `prisma/schema` | API Changes, Database / Migration, Breaking Changes |
+| **devops** | `.tf`, `helm/`, `k8s/`, `Dockerfile` | Infrastructure Impact, Affected Environments, Rollback Plan |
+| **security** | `.snyk`, `tfsec`, `trivy` | Security Impact, Threat Model Changes |
+| **ml** | `.ipynb`, `model/`, `training/`, `dvc.yaml` | Model Changes, Dataset Changes, Metrics / Evaluation |
+
+### Available Presets
+
+| Preset | Sections | Best For |
+|--------|----------|----------|
+| `default` | 6 | General-purpose repos |
+| `minimal` | 2 | Quick PRs (Purpose + Test Plan) |
+| `detailed` | 10 | Thorough reviews with screenshots, breaking changes, deployment notes |
+| `mobile` | 8 | iOS and Android apps |
+| `frontend` | 8 | Web apps (React, Vue, Svelte, etc.) |
+| `backend` | 8 | APIs and services |
+| `devops` | 8 | Infrastructure and CI/CD |
+| `security` | 7 | Security-focused changes |
+| `ml` | 8 | Machine learning and data science |
+
+### Conditional Sections
+
+Sections can appear or hide based on context:
+
+- **`has_tickets`** — Ticket section only appears when tickets are found in the branch name or commits
+- **`file_pattern`** — Screenshots section only appears when UI files are changed; Database section only when migration files are changed
+- **`commit_count_gt`** — Changes (commit list) section only appears when there's more than 1 commit
+
+### Repo Template Detection
+
+If your repo has a `PULL_REQUEST_TEMPLATE.md`, PR Narrator will find and parse it automatically. Supported locations:
+
+- `.github/pull_request_template.md`
+- `.github/PULL_REQUEST_TEMPLATE/` (picks `default.md` first)
+- `pull_request_template.md` (repo root)
+- `docs/pull_request_template.md`
+
+File names are matched case-insensitively. Both `.md` and `.txt` extensions are supported.
+
+Set `PR_DETECT_REPO_TEMPLATE=false` to skip repo template detection and use presets or auto-detection instead.
 
 ## Security
 
