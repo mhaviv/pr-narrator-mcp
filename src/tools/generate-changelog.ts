@@ -182,7 +182,8 @@ export async function generateChangelog(
   let fromDate: string | null = null;
   let toDate: string | null = null;
   let isFromTag = false;
-  let fromTagName: string | null = null;
+  let isToTag = false;
+  let toTagName: string | null = null;
 
   const validatedPath = validateRepoPath(repoPath);
   const git = createGit(validatedPath);
@@ -193,7 +194,6 @@ export async function generateChangelog(
       fromRef = tags[0].name;
       fromDate = tags[0].date;
       isFromTag = true;
-      fromTagName = tags[0].name;
     } else {
       try {
         const initial = await git.raw(["rev-list", "--max-parents=0", "HEAD"]);
@@ -222,13 +222,26 @@ export async function generateChangelog(
     warnings.push("Could not resolve ref dates.");
   }
 
-  // Check if fromRef is a tag (for header formatting)
+  // Check if refs are tags (for header formatting)
+  const tagListForLookup =
+    (!isFromTag && input.from) || (toRef !== "HEAD") ? await getTagList(repoPath) : [];
+
   if (!isFromTag && input.from) {
-    const tags = await getTagList(repoPath);
-    const matchingTag = tags.find((t) => t.name === input.from || t.hash.startsWith(input.from!));
+    const matchingTag = tagListForLookup.find(
+      (t) => t.name === input.from || t.hash.startsWith(input.from!)
+    );
     if (matchingTag) {
       isFromTag = true;
-      fromTagName = matchingTag.name;
+    }
+  }
+
+  if (toRef !== "HEAD") {
+    const matchingToTag = tagListForLookup.find(
+      (t) => t.name === toRef || t.hash.startsWith(toRef)
+    );
+    if (matchingToTag) {
+      isToTag = true;
+      toTagName = matchingToTag.name;
     }
   }
 
@@ -328,9 +341,8 @@ export async function generateChangelog(
     allAuthors,
     ticketLinkFormat: config.ticketLinkFormat,
     toDate,
-    isFromTag,
-    fromTagName,
-    toRef,
+    isToTag,
+    toTagName,
     groupBy,
   });
 
@@ -359,9 +371,8 @@ interface FormatOptions {
   allAuthors: Map<string, number>;
   ticketLinkFormat: string | undefined;
   toDate: string | null;
-  isFromTag: boolean;
-  fromTagName: string | null;
-  toRef: string;
+  isToTag: boolean;
+  toTagName: string | null;
   groupBy: string;
 }
 
@@ -374,9 +385,8 @@ function formatChangelog(opts: FormatOptions): string {
     allAuthors,
     ticketLinkFormat,
     toDate,
-    isFromTag,
-    fromTagName,
-    toRef,
+    isToTag,
+    toTagName,
     groupBy,
   } = opts;
 
@@ -385,12 +395,7 @@ function formatChangelog(opts: FormatOptions): string {
 
   switch (format) {
     case "keepachangelog": {
-      const versionLabel =
-        isFromTag && toRef === "HEAD"
-          ? "Unreleased"
-          : isFromTag && fromTagName
-            ? fromTagName
-            : "Unreleased";
+      const versionLabel = isToTag && toTagName ? toTagName : "Unreleased";
       parts.push(`## [${versionLabel}] — ${dateStr}`);
 
       const sectionOrder = ["Added", "Fixed", "Changed", "Documentation", "Reverted", "Other"];
@@ -451,7 +456,7 @@ function formatChangelog(opts: FormatOptions): string {
         parts.push("## Related Tickets");
         parts.push("");
         for (const ticket of allTickets) {
-          parts.push(`- ${ticket}`);
+          parts.push(`- ${formatTicketLink(ticket, ticketLinkFormat)}`);
         }
       }
       break;

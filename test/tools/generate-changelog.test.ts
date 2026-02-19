@@ -96,6 +96,19 @@ describe("generateChangelog", () => {
     );
   });
 
+  it("should use to-tag name in keepachangelog header when to ref is a tag", async () => {
+    vi.mocked(getTagList).mockResolvedValue([
+      { name: "v2.0.0", hash: "bbb2222", date: "2024-06-01T00:00:00+00:00" },
+      { name: "v1.0.0", hash: "aaa1111", date: "2024-01-01T00:00:00+00:00" },
+    ]);
+
+    const result = await generateChangelog({ from: "v1.0.0", to: "v2.0.0" }, testConfig);
+
+    expect(result.changelog).toContain("## [v2.0.0]");
+    expect(result.changelog).not.toContain("[v1.0.0]");
+    expect(result.changelog).not.toContain("[Unreleased]");
+  });
+
   it("should generate github-release format", async () => {
     const result = await generateChangelog({ format: "github-release" }, testConfig);
 
@@ -246,6 +259,19 @@ describe("generateChangelog", () => {
 
     expect(result.changelog).toContain("## Related Tickets");
     expect(result.changelog).toContain("- PROJ-123");
+  });
+
+  it("should render ticket links in github-release format when ticketLinkFormat is set", async () => {
+    vi.mocked(getCommitRange).mockResolvedValue([
+      makeCommit({ message: "feat: Add feature PROJ-789", shortHash: "aaa1111" }),
+    ]);
+
+    const result = await generateChangelog({ format: "github-release" }, testConfig);
+
+    expect(result.changelog).toContain("## Related Tickets");
+    expect(result.changelog).toContain(
+      "[PROJ-789](https://jira.example.com/browse/PROJ-789)"
+    );
   });
 
   it("should warn when commit range is very large", async () => {
