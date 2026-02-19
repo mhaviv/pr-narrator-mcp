@@ -5,6 +5,8 @@ import { defaultConfig } from "../../src/config/schema.js";
 // Mock the git utilities
 vi.mock("../../src/utils/git.js", () => ({
   getStagedChanges: vi.fn(),
+  getUnstagedChanges: vi.fn(),
+  getWorkingTreeStatus: vi.fn(),
   getCurrentBranch: vi.fn(),
   extractTicketFromBranch: vi.fn(),
   extractBranchPrefix: vi.fn(),
@@ -13,6 +15,8 @@ vi.mock("../../src/utils/git.js", () => ({
 
 import {
   getStagedChanges,
+  getUnstagedChanges,
+  getWorkingTreeStatus,
   getCurrentBranch,
   extractTicketFromBranch,
   extractBranchPrefix,
@@ -26,23 +30,120 @@ describe("generateCommitMessage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: no unstaged changes (most tests use staged)
+    vi.mocked(getUnstagedChanges).mockResolvedValue(null);
+    vi.mocked(getWorkingTreeStatus).mockResolvedValue({
+      modified: [],
+      untracked: [],
+      deleted: [],
+      modifiedCount: 0,
+      untrackedCount: 0,
+      deletedCount: 0,
+      totalUncommitted: 0,
+    });
   });
 
-  describe("when no staged changes", () => {
-    it("should return error when no staged changes", async () => {
-      vi.mocked(getStagedChanges).mockResolvedValue({ files: [], diff: "" });
+  describe("when no changes at all", () => {
+    it("should return error when no staged or unstaged changes", async () => {
+      vi.mocked(getStagedChanges).mockResolvedValue(null);
 
       const result = await generateCommitMessage({}, testConfig);
 
       expect(result.success).toBe(false);
-      expect(result.errors).toContain("No staged changes found. Stage changes with 'git add' first.");
+      expect(result.errors[0]).toContain("No staged or modified changes found");
+    });
+
+    it("should mention untracked files when only untracked exist", async () => {
+      vi.mocked(getStagedChanges).mockResolvedValue(null);
+      vi.mocked(getWorkingTreeStatus).mockResolvedValue({
+        modified: [],
+        untracked: ["new-file.ts"],
+        deleted: [],
+        modifiedCount: 0,
+        untrackedCount: 1,
+        deletedCount: 0,
+        totalUncommitted: 1,
+      });
+
+      const result = await generateCommitMessage({}, testConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.errors[0]).toContain("1 untracked file(s)");
+      expect(result.errors[0]).toContain("git add");
+    });
+  });
+
+  describe("when only unstaged changes exist", () => {
+    beforeEach(() => {
+      vi.mocked(getStagedChanges).mockResolvedValue(null);
+      vi.mocked(getUnstagedChanges).mockResolvedValue({
+        files: [
+          { path: "src/app.ts", additions: 15, deletions: 3, binary: false },
+          { path: "src/utils.ts", additions: 5, deletions: 2, binary: false },
+        ],
+        totalAdditions: 20,
+        totalDeletions: 5,
+        diff: "diff --git a/src/app.ts b/src/app.ts\n-old\n+new",
+      });
+      vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-42-add-search");
+      vi.mocked(extractTicketFromBranch).mockReturnValue("PROJ-42");
+      vi.mocked(extractBranchPrefix).mockReturnValue("Feature");
+    });
+
+    it("should succeed with unstaged changes and set source to unstaged", async () => {
+      const result = await generateCommitMessage({}, testConfig);
+
+      expect(result.success).toBe(true);
+      expect(result.source).toBe("unstaged");
+      expect(result.changes.fileCount).toBe(2);
+    });
+
+    it("should provide a hint with staging instructions", async () => {
+      const result = await generateCommitMessage({}, testConfig);
+
+      expect(result.hint).not.toBeNull();
+      expect(result.hint).toContain("No staged changes found");
+      expect(result.hint).toContain("git add");
+      expect(result.hint).toContain("src/app.ts");
+    });
+
+    it("should use 'git add .' for many unstaged files", async () => {
+      vi.mocked(getUnstagedChanges).mockResolvedValue({
+        files: Array.from({ length: 8 }, (_, i) => ({
+          path: `src/file${i}.ts`,
+          additions: 5,
+          deletions: 1,
+          binary: false,
+        })),
+        totalAdditions: 40,
+        totalDeletions: 8,
+        diff: "mock diff",
+      });
+
+      const result = await generateCommitMessage({}, testConfig);
+
+      expect(result.hint).toContain("git add .");
+    });
+
+    it("should include unstaged warning in validation", async () => {
+      const result = await generateCommitMessage({}, testConfig);
+
+      expect(result.validation.warnings.some((w) => w.includes("unstaged"))).toBe(true);
+    });
+
+    it("should still apply ticket prefix from branch", async () => {
+      const result = await generateCommitMessage({ summary: "Add search feature" }, testConfig);
+
+      expect(result.title).toContain("PROJ-42");
     });
   });
 
   describe("when staged changes exist", () => {
     beforeEach(() => {
       vi.mocked(getStagedChanges).mockResolvedValue({
-        files: [{ path: "src/index.ts", additions: 10, deletions: 5 }],
+        files: [{ path: "src/index.ts", additions: 10, deletions: 5, binary: false }],
+        totalAdditions: 10,
+        totalDeletions: 5,
         diff: "mock diff",
       });
       vi.mocked(getCurrentBranch).mockResolvedValue("feature/PROJ-123-add-login");
@@ -54,7 +155,15 @@ describe("generateCommitMessage", () => {
       const result = await generateCommitMessage({ summary: "Add login form" }, testConfig);
 
       expect(result.success).toBe(true);
+      expect(result.source).toBe("staged");
+      expect(result.hint).toBeNull();
       expect(result.title).toContain("PROJ-123");
+    });
+
+    it("should not call getUnstagedChanges when staged changes exist", async () => {
+      await generateCommitMessage({ summary: "Add login form" }, testConfig);
+
+      expect(getUnstagedChanges).not.toHaveBeenCalled();
     });
 
     it("should use branch prefix as fallback when no ticket", async () => {
@@ -72,7 +181,6 @@ describe("generateCommitMessage", () => {
       expect(result.success).toBe(true);
       expect(result.title).toContain("Update");
       expect(result.title).not.toMatch(/\d+ files/);
-      // Should include diff, changeSummary, and guidelines for AI to rewrite
       expect(result.commitGuidelines).not.toBeNull();
       expect(result.commitGuidelines).toContain("changeSummary");
       expect(result.changes.diff).not.toBeNull();
@@ -94,36 +202,53 @@ describe("generateCommitMessage", () => {
     it("should warn about non-imperative mood", async () => {
       const result = await generateCommitMessage({ summary: "Added login form" }, testConfig);
 
-      expect(result.validation.warnings.some(w => w.includes("imperative"))).toBe(true);
+      expect(result.validation.warnings.some((w) => w.includes("imperative"))).toBe(true);
     });
 
     it("should warn about long titles and provide truncated suggestion", async () => {
       const longSummary = "A".repeat(150);
       const result = await generateCommitMessage({ summary: longSummary }, testConfig);
 
-      // Full title is preserved (not truncated)
       expect(result.title).toContain(longSummary);
-      // Info about length (soft limit)
-      expect(result.validation.warnings.some(w => w.includes("characters"))).toBe(true);
-      // Truncated suggestion is provided
+      expect(result.validation.warnings.some((w) => w.includes("characters"))).toBe(true);
       expect(result.validation.truncatedSuggestion).not.toBeNull();
-      expect(result.validation.truncatedSuggestion!.length).toBeLessThanOrEqual(testConfig.commit.maxTitleLength);
+      expect(result.validation.truncatedSuggestion!.length).toBeLessThanOrEqual(
+        testConfig.commit.maxTitleLength
+      );
       expect(result.validation.truncatedSuggestion).toContain("...");
     });
 
-    it("should include commit body when requested", async () => {
-      const result = await generateCommitMessage({ summary: "Add login", includeBody: true }, testConfig);
+    it("should provide diff and guidelines when includeBody is true", async () => {
+      const result = await generateCommitMessage(
+        { summary: "Add login", includeBody: true },
+        testConfig
+      );
 
-      expect(result.body).not.toBeNull();
+      expect(result.changes.diff).not.toBeNull();
+      expect(result.commitGuidelines).not.toBeNull();
+      expect(result.commitGuidelines).toContain("diff");
+      expect(result.commitGuidelines).toContain("functional impact");
+    });
+
+    it("should not include diff when summary provided without includeBody", async () => {
+      const result = await generateCommitMessage(
+        { summary: "Add login", includeBody: false },
+        testConfig
+      );
+
+      expect(result.changes.diff).toBeNull();
+      expect(result.commitGuidelines).toBeNull();
     });
 
     it("should warn about files not covered by summary", async () => {
       vi.mocked(getStagedChanges).mockResolvedValue({
         files: [
-          { path: "src/VideoPlayerSDK.swift", additions: 50, deletions: 0 },
-          { path: "src/BootstrapCoordinator.swift", additions: 20, deletions: 5 },
-          { path: "src/LaunchArguments.swift", additions: 10, deletions: 2 },
+          { path: "src/VideoPlayerSDK.swift", additions: 50, deletions: 0, binary: false },
+          { path: "src/BootstrapCoordinator.swift", additions: 20, deletions: 5, binary: false },
+          { path: "src/LaunchArguments.swift", additions: 10, deletions: 2, binary: false },
         ],
+        totalAdditions: 80,
+        totalDeletions: 7,
         diff: "mock diff",
       });
 
@@ -139,9 +264,9 @@ describe("generateCommitMessage", () => {
 
     it("should not warn when summary covers all files", async () => {
       vi.mocked(getStagedChanges).mockResolvedValue({
-        files: [
-          { path: "src/auth/login.ts", additions: 10, deletions: 5 },
-        ],
+        files: [{ path: "src/auth/login.ts", additions: 10, deletions: 5, binary: false }],
+        totalAdditions: 10,
+        totalDeletions: 5,
         diff: "mock diff",
       });
 
@@ -156,10 +281,12 @@ describe("generateCommitMessage", () => {
     it("should always include changeSummary with categorized file breakdown", async () => {
       vi.mocked(getStagedChanges).mockResolvedValue({
         files: [
-          { path: "src/Player.swift", additions: 50, deletions: 0 },
-          { path: "src/Config.swift", additions: 20, deletions: 5 },
-          { path: "project.pbxproj", additions: 10, deletions: 2 },
+          { path: "src/Player.swift", additions: 50, deletions: 0, binary: false },
+          { path: "src/Config.swift", additions: 20, deletions: 5, binary: false },
+          { path: "project.pbxproj", additions: 10, deletions: 2, binary: false },
         ],
+        totalAdditions: 80,
+        totalDeletions: 7,
         diff: "mock diff",
       });
 
@@ -171,7 +298,7 @@ describe("generateCommitMessage", () => {
       expect(result.changeSummary).toBeDefined();
       expect(result.changeSummary.length).toBeGreaterThan(0);
 
-      const swiftGroup = result.changeSummary.find(g => g.category === "Swift source");
+      const swiftGroup = result.changeSummary.find((g) => g.category === "Swift source");
       expect(swiftGroup).toBeDefined();
       expect(swiftGroup!.files).toHaveLength(2);
     });
@@ -195,9 +322,11 @@ describe("generateCommitMessage", () => {
       };
 
       it("should include commit type", async () => {
-        const result = await generateCommitMessage({ summary: "Add login", type: "feat" }, conventionalConfig);
+        const result = await generateCommitMessage(
+          { summary: "Add login", type: "feat" },
+          conventionalConfig
+        );
 
-        // Type is capitalized by default
         expect(result.title).toContain("Feat:");
       });
 
@@ -210,7 +339,10 @@ describe("generateCommitMessage", () => {
           },
         };
 
-        const result = await generateCommitMessage({ summary: "Add login", type: "feat", scope: "auth" }, scopeConfig);
+        const result = await generateCommitMessage(
+          { summary: "Add login", type: "feat", scope: "auth" },
+          scopeConfig
+        );
 
         expect(result.title).toContain("(auth)");
       });

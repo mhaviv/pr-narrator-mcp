@@ -159,11 +159,15 @@ Returns the template source (`repo`, `preset`, `auto-detected`, or `default`), d
 ### Commit Messages
 
 #### generate_commit_message
-Prepare commit message context from staged changes.
+Prepare commit message context from staged or unstaged changes.
+
+If nothing is staged, the tool automatically falls back to unstaged working tree changes and provides staging instructions — no need to run `git add` first just to analyze your changes. The response includes a `source` field (`"staged"` or `"unstaged"`) and a `hint` with the exact `git add` command to run.
+
+When `includeBody` is true, the actual diff is provided so the AI can write a meaningful body that describes *what changed* functionally — not just file type counts.
 
 Two modes:
-- **With `summary` param (recommended):** Returns a ready-to-use commit message with proper prefix/formatting
-- **Without `summary`:** Returns placeholder title + diff + guidelines for AI to compose the message
+- **With `summary` param (recommended):** Returns a ready-to-use commit message with proper prefix/formatting. Add `includeBody: true` to get diff-based body generation.
+- **Without `summary`:** Returns placeholder title + diff + guidelines for AI to compose the message and body
 
 #### validate_commit_message
 Check a commit message against configured rules (length, format, capitalization, imperative mood).

@@ -388,6 +388,48 @@ export async function getStagedChanges(
 }
 
 /**
+ * Get unstaged changes in the working tree (modified tracked files, not yet staged)
+ */
+export async function getUnstagedChanges(
+  repoPath: string
+): Promise<StagedChanges | null> {
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
+    const status = await git.status();
+
+    const modifiedFiles = [
+      ...status.modified,
+      ...status.renamed.map((r) => r.to),
+      ...status.deleted,
+    ];
+
+    if (modifiedFiles.length === 0) {
+      return null;
+    }
+
+    const rawDiff = await git.diff();
+    const diffStat = await git.diff(["--numstat"]);
+
+    const { diff, truncated } = truncateDiff(rawDiff);
+
+    const files = parseNumstat(diffStat, modifiedFiles);
+    const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
+    const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
+
+    return {
+      files,
+      totalAdditions,
+      totalDeletions,
+      diff,
+      diffTruncated: truncated,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get all changes since base branch (for PR generation)
  */
 export async function getBranchChanges(
