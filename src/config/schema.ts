@@ -71,18 +71,45 @@ const prTitleSchema = z
   .default({});
 
 /**
+ * Condition that controls when a PR section appears
+ */
+const sectionConditionSchema = z
+  .object({
+    type: z.enum(["always", "has_tickets", "file_pattern", "commit_count_gt", "never"]),
+    pattern: z.string().optional(),
+    threshold: z.number().optional(),
+  })
+  .optional();
+
+/**
  * PR section configuration
  */
 const prSectionSchema = z.object({
   name: z.string(),
   required: z.boolean().default(false),
-  // Auto-populate options:
-  // - "commits": List all commits since base branch
-  // - "extracted": List all tickets found in branch/commits
-  // - "purpose": Generate a summary of changes from diff (files changed, additions/deletions)
-  // - "none": No auto-population (use placeholder if required)
-  autoPopulate: z.enum(["commits", "extracted", "purpose", "none"]).optional(),
+  autoPopulate: z
+    .enum(["commits", "extracted", "purpose", "none", "checklist", "change_type"])
+    .optional(),
+  condition: sectionConditionSchema,
+  placeholder: z.string().optional(),
+  format: z.enum(["markdown", "checklist"]).default("markdown"),
 });
+
+/**
+ * PR template configuration
+ */
+const prTemplateConfigSchema = z
+  .object({
+    preset: z
+      .enum([
+        "default", "minimal", "detailed",
+        "mobile", "frontend", "backend",
+        "devops", "security", "ml",
+      ])
+      .optional(),
+    detectRepoTemplate: z.boolean().default(true),
+  })
+  .default({});
 
 /**
  * PR configuration
@@ -90,11 +117,16 @@ const prSectionSchema = z.object({
 const prSchema = z
   .object({
     title: prTitleSchema,
+    template: prTemplateConfigSchema,
     sections: z
       .array(prSectionSchema)
       .default([
-        { name: "Ticket", required: false, autoPopulate: "extracted" },
-        { name: "Purpose", required: true, autoPopulate: "purpose" },
+        { name: "Purpose", required: true, autoPopulate: "purpose", condition: { type: "always" } },
+        { name: "Ticket", required: false, autoPopulate: "extracted", condition: { type: "has_tickets" } },
+        { name: "Type of Change", required: false, autoPopulate: "change_type", condition: { type: "always" } },
+        { name: "Changes", required: false, autoPopulate: "commits", condition: { type: "commit_count_gt", threshold: 1 } },
+        { name: "Test Plan", required: true, autoPopulate: "none", condition: { type: "always" } },
+        { name: "Checklist", required: false, autoPopulate: "checklist", format: "checklist", condition: { type: "always" } },
       ]),
   })
   .default({});
@@ -163,6 +195,8 @@ export type CommitConfig = z.infer<typeof commitSchema>;
 export type PrConfig = z.infer<typeof prSchema>;
 export type PrefixConfig = z.infer<typeof prefixSchema>;
 export type PrSection = z.infer<typeof prSectionSchema>;
+export type SectionCondition = z.infer<typeof sectionConditionSchema>;
+export type PrTemplateConfig = z.infer<typeof prTemplateConfigSchema>;
 export type VcsIntegration = z.infer<typeof vcsIntegrationSchema>;
 export type TicketingIntegration = z.infer<typeof ticketingIntegrationSchema>;
 

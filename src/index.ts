@@ -54,6 +54,11 @@ import {
   generatePr,
   generatePrSchema,
 } from "./tools/generate-pr.js";
+import {
+  getPrTemplateTool,
+  getPrTemplate,
+  getPrTemplateSchema,
+} from "./tools/get-pr-template.js";
 
 // Safety annotations for all tools (Anthropic MCP requirement)
 // All tools in this server are read-only operations
@@ -112,6 +117,12 @@ const tools = [
     name: generatePrTool.name,
     description: generatePrTool.description,
     inputSchema: generatePrTool.inputSchema,
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: getPrTemplateTool.name,
+    description: getPrTemplateTool.description,
+    inputSchema: getPrTemplateTool.inputSchema,
     annotations: readOnlyAnnotations,
   },
 ];
@@ -236,6 +247,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "generate_pr": {
         const input = generatePrSchema.parse(args || {});
         const result = await generatePr(input, config);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "get_pr_template": {
+        const input = getPrTemplateSchema.parse(args || {});
+        const result = await getPrTemplate(input, config);
         return {
           content: [
             {

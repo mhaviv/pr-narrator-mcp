@@ -50,11 +50,40 @@ export function getConfig(): Config {
     }
   }
 
+  if (process.env.PR_TEMPLATE_PRESET) {
+    const preset = process.env.PR_TEMPLATE_PRESET;
+    const validPresets = [
+      "default", "minimal", "detailed",
+      "mobile", "frontend", "backend",
+      "devops", "security", "ml",
+    ];
+    if (validPresets.includes(preset)) {
+      if (!envConfig.pr) envConfig.pr = {};
+      if (!(envConfig.pr as Record<string, unknown>).template) {
+        (envConfig.pr as Record<string, unknown>).template = {};
+      }
+      ((envConfig.pr as Record<string, unknown>).template as Record<string, unknown>).preset = preset;
+    }
+  }
+
+  if (process.env.PR_DETECT_REPO_TEMPLATE !== undefined) {
+    const val = process.env.PR_DETECT_REPO_TEMPLATE.toLowerCase();
+    if (!envConfig.pr) envConfig.pr = {};
+    if (!(envConfig.pr as Record<string, unknown>).template) {
+      (envConfig.pr as Record<string, unknown>).template = {};
+    }
+    ((envConfig.pr as Record<string, unknown>).template as Record<string, unknown>).detectRepoTemplate =
+      val !== "false" && val !== "0";
+  }
+
   if (Object.keys(envConfig).length === 0) {
     return defaultConfig;
   }
 
-  // Merge env config with defaults
+  // Merge env config with defaults, preserving pr config from env vars
+  const envPr = envConfig.pr as Record<string, unknown> | undefined;
+  const envPrTemplate = envPr?.template as Record<string, unknown> | undefined;
+
   const merged = {
     ...defaultConfig,
     ...envConfig,
@@ -67,7 +96,14 @@ export function getConfig(): Config {
       },
       rules: defaultConfig.commit.rules,
     },
-    pr: defaultConfig.pr,
+    pr: {
+      ...defaultConfig.pr,
+      ...(envPr || {}),
+      template: {
+        ...defaultConfig.pr.template,
+        ...(envPrTemplate || {}),
+      },
+    },
   };
 
   const result = configSchema.safeParse(merged);
