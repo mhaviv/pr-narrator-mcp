@@ -171,6 +171,20 @@ describe("generateChangelog", () => {
     expect(result.entries.find((e) => e.title === "update deps")?.scope).toBe("deps");
   });
 
+  it("should recognize 'Feature:', 'Hotfix:', and 'Bugfix:' as conventional commit aliases", async () => {
+    vi.mocked(getCommitRange).mockResolvedValue([
+      makeCommit({ message: "Feature: Add changelog generation", shortHash: "aaa1111" }),
+      makeCommit({ message: "Hotfix: Patch production crash", shortHash: "bbb2222" }),
+      makeCommit({ message: "Bugfix: Handle null pointer", shortHash: "ccc3333" }),
+    ]);
+
+    const result = await generateChangelog({}, testConfig);
+
+    expect(result.entries.find((e) => e.title === "Add changelog generation")?.type).toBe("feat");
+    expect(result.entries.find((e) => e.title === "Patch production crash")?.type).toBe("fix");
+    expect(result.entries.find((e) => e.title === "Handle null pointer")?.type).toBe("fix");
+  });
+
   it("should infer types from non-conventional commits", async () => {
     vi.mocked(getCommitRange).mockResolvedValue([
       makeCommit({ message: "Fix login issue", shortHash: "aaa1111" }),
@@ -188,6 +202,20 @@ describe("generateChangelog", () => {
 
     const otherEntry = result.entries.find((e) => e.title === "Random change");
     expect(otherEntry?.type).toBe("other");
+  });
+
+  it("should infer types when first word has trailing punctuation (non-conventional format)", async () => {
+    vi.mocked(getCommitRange).mockResolvedValue([
+      makeCommit({ message: "Improve: loading performance", shortHash: "aaa1111" }),
+      makeCommit({ message: "Cleanup: remove dead code", shortHash: "bbb2222" }),
+      makeCommit({ message: "Bump: dependency versions", shortHash: "ccc3333" }),
+    ]);
+
+    const result = await generateChangelog({}, testConfig);
+
+    expect(result.entries.find((e) => e.title === "Improve: loading performance")?.type).toBe("feat");
+    expect(result.entries.find((e) => e.title === "Cleanup: remove dead code")?.type).toBe("chore");
+    expect(result.entries.find((e) => e.title === "Bump: dependency versions")?.type).toBe("feat");
   });
 
   it("should deduplicate squash-merge artifacts", async () => {
