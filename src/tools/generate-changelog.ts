@@ -27,18 +27,12 @@ export const generateChangelogSchema = z.object({
     .describe(
       "Start ref — tag, SHA, or branch. Defaults to the latest tag. If no tags exist, uses the initial commit."
     ),
-  to: z
-    .string()
-    .optional()
-    .describe("End ref. Defaults to HEAD."),
+  to: z.string().optional().describe("End ref. Defaults to HEAD."),
   groupBy: z
     .enum(["type", "scope", "ticket"])
     .default("type")
     .describe("How to group changelog entries."),
-  includeAuthors: z
-    .boolean()
-    .default(true)
-    .describe("Include contributor attribution."),
+  includeAuthors: z.boolean().default(true).describe("Include contributor attribution."),
   format: z
     .enum(["keepachangelog", "github-release", "plain"])
     .default("keepachangelog")
@@ -91,10 +85,16 @@ const TYPE_ALIASES: Record<string, string> = {
 
 const KEYWORD_MAP: Array<{ keywords: string[]; type: string }> = [
   { keywords: ["fix", "fixed", "fixes", "bugfix", "hotfix"], type: "fix" },
-  { keywords: ["add", "added", "adds", "feature", "feat", "implement", "implemented"], type: "feat" },
+  {
+    keywords: ["add", "added", "adds", "feature", "feat", "implement", "implemented"],
+    type: "feat",
+  },
   { keywords: ["update", "updated", "updates", "upgrade", "upgraded", "bump"], type: "feat" },
   { keywords: ["remove", "removed", "removes", "delete", "deleted"], type: "refactor" },
-  { keywords: ["refactor", "refactored", "refactors", "restructure", "reorganize"], type: "refactor" },
+  {
+    keywords: ["refactor", "refactored", "refactors", "restructure", "reorganize"],
+    type: "refactor",
+  },
   { keywords: ["move", "moved", "rename", "renamed", "migrate", "migrated"], type: "refactor" },
   { keywords: ["test", "tests", "testing"], type: "test" },
   { keywords: ["doc", "docs", "readme", "document"], type: "docs" },
@@ -256,7 +256,7 @@ export async function generateChangelog(
 
   // Check if refs are tags (for header formatting)
   const tagListForLookup =
-    (!isFromTag && input.from) || (toRef !== "HEAD") ? await getTagList(repoPath) : [];
+    (!isFromTag && input.from) || toRef !== "HEAD" ? await getTagList(repoPath) : [];
 
   if (!isFromTag && input.from) {
     const fromInput = input.from;

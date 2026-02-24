@@ -50,13 +50,33 @@ describe("generateChangelog", () => {
     ]);
 
     vi.mocked(getCommitRange).mockResolvedValue([
-      makeCommit({ hash: "abc1234567890", shortHash: "abc1234", message: "feat: Add user auth", author: "Alice", date: "2024-06-01" }),
-      makeCommit({ hash: "def5678901234", shortHash: "def5678", message: "fix: Handle validation", author: "Bob", date: "2024-05-30" }),
-      makeCommit({ hash: "ghi9012345678", shortHash: "ghi9012", message: "refactor: Clean up database", author: "Alice", date: "2024-05-29" }),
+      makeCommit({
+        hash: "abc1234567890",
+        shortHash: "abc1234",
+        message: "feat: Add user auth",
+        author: "Alice",
+        date: "2024-06-01",
+      }),
+      makeCommit({
+        hash: "def5678901234",
+        shortHash: "def5678",
+        message: "fix: Handle validation",
+        author: "Bob",
+        date: "2024-05-30",
+      }),
+      makeCommit({
+        hash: "ghi9012345678",
+        shortHash: "ghi9012",
+        message: "refactor: Clean up database",
+        author: "Alice",
+        date: "2024-05-29",
+      }),
     ]);
 
     const mockGitRaw = vi.fn().mockResolvedValue("2024-06-01T00:00:00+00:00");
-    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as unknown as ReturnType<typeof createGit>);
+    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as unknown as ReturnType<
+      typeof createGit
+    >);
   });
 
   it("should generate basic changelog in keepachangelog format", async () => {
@@ -74,11 +94,14 @@ describe("generateChangelog", () => {
 
   it("should fall back to initial commit when no tags exist", async () => {
     vi.mocked(getTagList).mockResolvedValue([]);
-    const mockGitRaw = vi.fn()
+    const mockGitRaw = vi
+      .fn()
       .mockResolvedValueOnce("initial-sha\n")
       .mockResolvedValueOnce("2024-01-01T00:00:00+00:00")
       .mockResolvedValueOnce("2024-06-01T00:00:00+00:00");
-    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as unknown as ReturnType<typeof createGit>);
+    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as unknown as ReturnType<
+      typeof createGit
+    >);
 
     const result = await generateChangelog({}, testConfig);
 
@@ -89,11 +112,7 @@ describe("generateChangelog", () => {
   it("should use explicit from/to refs", async () => {
     await generateChangelog({ from: "v0.9.0", to: "v1.0.0" }, testConfig);
 
-    expect(vi.mocked(getCommitRange)).toHaveBeenCalledWith(
-      expect.any(String),
-      "v0.9.0",
-      "v1.0.0"
-    );
+    expect(vi.mocked(getCommitRange)).toHaveBeenCalledWith(expect.any(String), "v0.9.0", "v1.0.0");
   });
 
   it("should use to-tag name in keepachangelog header when to ref is a tag", async () => {
@@ -213,15 +232,27 @@ describe("generateChangelog", () => {
 
     const result = await generateChangelog({}, testConfig);
 
-    expect(result.entries.find((e) => e.title === "Improve: loading performance")?.type).toBe("feat");
+    expect(result.entries.find((e) => e.title === "Improve: loading performance")?.type).toBe(
+      "feat"
+    );
     expect(result.entries.find((e) => e.title === "Cleanup: remove dead code")?.type).toBe("chore");
     expect(result.entries.find((e) => e.title === "Bump: dependency versions")?.type).toBe("feat");
   });
 
   it("should deduplicate squash-merge artifacts", async () => {
     vi.mocked(getCommitRange).mockResolvedValue([
-      makeCommit({ hash: "newer111", shortHash: "newer11", message: "feat: Add login", date: "2024-06-01" }),
-      makeCommit({ hash: "older222", shortHash: "older22", message: "feat: Add login", date: "2024-05-01" }),
+      makeCommit({
+        hash: "newer111",
+        shortHash: "newer11",
+        message: "feat: Add login",
+        date: "2024-06-01",
+      }),
+      makeCommit({
+        hash: "older222",
+        shortHash: "older22",
+        message: "feat: Add login",
+        date: "2024-05-01",
+      }),
     ]);
 
     const result = await generateChangelog({}, testConfig);
@@ -312,14 +343,16 @@ describe("generateChangelog", () => {
     const result = await generateChangelog({ format: "github-release" }, testConfig);
 
     expect(result.changelog).toContain("## Related Tickets");
-    expect(result.changelog).toContain(
-      "[PROJ-789](https://jira.example.com/browse/PROJ-789)"
-    );
+    expect(result.changelog).toContain("[PROJ-789](https://jira.example.com/browse/PROJ-789)");
   });
 
   it("should warn when commit range is very large", async () => {
     const manyCommits = Array.from({ length: 10001 }, (_, i) =>
-      makeCommit({ hash: `hash${i}`.padEnd(12, "0"), shortHash: `hash${i}`.substring(0, 7), message: `feat: Commit ${i}` })
+      makeCommit({
+        hash: `hash${i}`.padEnd(12, "0"),
+        shortHash: `hash${i}`.substring(0, 7),
+        message: `feat: Commit ${i}`,
+      })
     );
     vi.mocked(getCommitRange).mockResolvedValue(manyCommits);
 
