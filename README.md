@@ -8,9 +8,9 @@
 [![CI](https://github.com/mhaviv/pr-narrator-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/mhaviv/pr-narrator-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> Generate consistent commit messages and PR content automatically.
+> Generate consistent commit messages, PR content, and release notes automatically.
 
-An MCP server that generates commit messages and PR descriptions based on your git changes. It auto-detects your repo's domain (mobile, frontend, backend, devops, security, ML) and applies the right PR template — no config needed.
+An MCP server that generates commit messages, PR content (titles, descriptions, and templates), and release notes from your git changes. If your repo doesn't already have a PR template, it auto-detects the domain (mobile, frontend, backend, devops, security, ML) and applies the right one — no config needed.
 
 ## Install
 
@@ -171,6 +171,20 @@ Two modes:
 
 #### validate_commit_message
 Check a commit message against configured rules (length, format, capitalization, imperative mood).
+
+### Release Notes
+
+#### generate_changelog
+Generate a changelog / release notes from git commit history between two refs (tags, SHAs, or branches).
+
+- **Auto-resolves refs** — defaults `from` to the latest tag (or initial commit if no tags) and `to` to HEAD
+- **Parses commits** — detects conventional commit types/scopes, infers types from keywords for non-conventional messages, extracts co-authors and ticket references
+- **Deduplicates** squash-merge artifacts
+- **Three output formats:** `keepachangelog` (default), `github-release`, `plain`
+- **Three grouping modes:** `type` (default), `scope`, `ticket`
+- **Includes stats** — commit count, contributor count, ticket count, and a one-line summary
+
+Returns `changelog` (formatted markdown), `entries` (structured data), `summary`, `stats`, `range`, and `warnings`.
 
 ### Repository Analysis
 

@@ -8,19 +8,30 @@ import {
 
 // Create mock functions
 const mockRaw = vi.fn();
+const mockBranch = vi.fn();
 const mockBranchLocal = vi.fn();
+const mockTags = vi.fn();
+const mockLog = vi.fn();
 
 // Mock simple-git module
 vi.mock("simple-git", () => ({
   default: vi.fn(() => ({
     raw: mockRaw,
+    branch: mockBranch,
     branchLocal: mockBranchLocal,
+    tags: mockTags,
+    log: mockLog,
     revparse: vi.fn().mockResolvedValue("/fake/.git"),
   })),
 }));
 
 // Import after mock setup
-import { getDefaultBranch } from "../../src/utils/git.js";
+import {
+  getDefaultBranch,
+  getTagList,
+  getCommitRange,
+  extractCoAuthors,
+} from "../../src/utils/git.js";
 
 describe("git utilities", () => {
   describe("extractTicketFromBranch", () => {
@@ -192,15 +203,14 @@ describe("git utilities", () => {
     });
 
     it("should use configured branch when explicitly set", async () => {
-      mockBranchLocal.mockResolvedValue({ all: ["main", "develop"], current: "feature/test" });
+      mockBranch.mockResolvedValue({ all: ["main", "develop"], current: "feature/test" });
       
       const result = await getDefaultBranch("/fake/path", "develop");
       expect(result).toBe("develop");
     });
 
     it("should pick first candidate when multiple exist", async () => {
-      // main comes before develop/master in the candidates list
-      mockBranchLocal.mockResolvedValue({ all: ["main", "develop", "feature/test"], current: "feature/test" });
+      mockBranch.mockResolvedValue({ all: ["main", "develop", "feature/test"], current: "feature/test" });
       mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
@@ -208,7 +218,7 @@ describe("git utilities", () => {
     });
 
     it("should try origin HEAD when no common branches", async () => {
-      mockBranchLocal.mockResolvedValue({ all: ["feature/test"], current: "feature/test" });
+      mockBranch.mockResolvedValue({ all: ["feature/test"], current: "feature/test" });
       mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
 
       const result = await getDefaultBranch("/fake/path");
@@ -216,7 +226,7 @@ describe("git utilities", () => {
     });
 
     it("should default to 'main' when no branches found", async () => {
-      mockBranchLocal.mockResolvedValue({ all: [], current: "" });
+      mockBranch.mockResolvedValue({ all: [], current: "" });
       mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
@@ -336,6 +346,139 @@ describe("git utilities", () => {
     it("should return null for overly long ticket pattern", () => {
       const result = extractTicketFromBranch("feature/test", "A".repeat(201));
       expect(result).toBe(null);
+    });
+  });
+
+  describe("getTagList", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should return tags sorted by creator date descending", async () => {
+      mockRaw.mockResolvedValueOnce(
+        "v1.1.0\tbbb2222\t2024-06-01T00:00:00+00:00\nv1.0.0\taaa1111\t2024-01-01T00:00:00+00:00\n"
+      );
+
+      const result = await getTagList("/fake/path");
+      expect(result).toHaveLength(2);
+      expect(result[0].name).toBe("v1.1.0");
+      expect(result[0].hash).toBe("bbb2222");
+      expect(result[0].date).toBe("2024-06-01T00:00:00+00:00");
+      expect(result[1].name).toBe("v1.0.0");
+      expect(result[1].hash).toBe("aaa1111");
+    });
+
+    it("should return empty array when no tags exist", async () => {
+      mockRaw.mockResolvedValueOnce("");
+      const result = await getTagList("/fake/path");
+      expect(result).toEqual([]);
+    });
+
+    it("should handle errors gracefully", async () => {
+      mockRaw.mockRejectedValueOnce(new Error("git error"));
+      const result = await getTagList("/fake/path");
+      expect(result).toEqual([]);
+    });
+
+    it("should handle tags with missing date", async () => {
+      mockRaw.mockResolvedValueOnce("v1.0.0\taaa1111\t\n");
+
+      const result = await getTagList("/fake/path");
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe("v1.0.0");
+      expect(result[0].hash).toBe("aaa1111");
+      expect(result[0].date).toBeNull();
+    });
+  });
+
+  describe("getCommitRange", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should return commits between two refs", async () => {
+      mockLog.mockResolvedValue({
+        all: [
+          {
+            hash: "abc1234567890",
+            message: "feat: Add feature",
+            body: "Some details",
+            author_name: "Alice",
+            date: "2024-01-15",
+          },
+          {
+            hash: "def5678901234",
+            message: "fix: Fix bug",
+            body: "",
+            author_name: "Bob",
+            date: "2024-01-14",
+          },
+        ],
+      });
+
+      const result = await getCommitRange("/fake/path", "v1.0.0", "HEAD");
+      expect(result).toHaveLength(2);
+      expect(result[0].hash).toBe("abc1234567890");
+      expect(result[0].shortHash).toBe("abc1234");
+      expect(result[0].message).toBe("feat: Add feature");
+      expect(result[0].body).toBe("Some details");
+      expect(result[0].author).toBe("Alice");
+      expect(result[1].author).toBe("Bob");
+    });
+
+    it("should return empty array on error", async () => {
+      mockLog.mockRejectedValue(new Error("git error"));
+      const result = await getCommitRange("/fake/path", "v1.0.0", "HEAD");
+      expect(result).toEqual([]);
+    });
+
+    it("should handle commits with no body", async () => {
+      mockLog.mockResolvedValue({
+        all: [
+          {
+            hash: "abc1234567890",
+            message: "Quick fix",
+            body: undefined,
+            author_name: "Charlie",
+            date: "2024-02-01",
+          },
+        ],
+      });
+
+      const result = await getCommitRange("/fake/path", "v1.0.0", "HEAD");
+      expect(result[0].body).toBe("");
+    });
+  });
+
+  describe("extractCoAuthors", () => {
+    it("should extract co-authors from trailer lines", () => {
+      const body = `Some commit details
+
+Co-authored-by: Alice Smith <alice@example.com>
+Co-authored-by: Bob Jones <bob@example.com>`;
+      const result = extractCoAuthors(body);
+      expect(result).toEqual(["Alice Smith", "Bob Jones"]);
+    });
+
+    it("should return empty array for empty body", () => {
+      expect(extractCoAuthors("")).toEqual([]);
+    });
+
+    it("should return empty array when no co-authors", () => {
+      expect(extractCoAuthors("Just a normal commit body")).toEqual([]);
+    });
+
+    it("should handle various spacing formats", () => {
+      const body = `Co-authored-by:  Jane Doe  <jane@example.com>
+Co-authored-by: John  <john@example.com>`;
+      const result = extractCoAuthors(body);
+      expect(result).toEqual(["Jane Doe", "John"]);
+    });
+
+    it("should be case-insensitive", () => {
+      const body = "co-authored-by: Alice <alice@example.com>";
+      const result = extractCoAuthors(body);
+      expect(result).toEqual(["Alice"]);
     });
   });
 });

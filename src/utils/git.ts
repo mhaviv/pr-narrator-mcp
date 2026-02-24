@@ -545,6 +545,109 @@ export async function getWorkingTreeStatus(
   }
 }
 
+export interface TagInfo {
+  name: string;
+  hash: string;
+  date: string | null;
+}
+
+/**
+ * Get list of tags sorted by creator date (most recent first).
+ * Uses a single `git for-each-ref` call to avoid N+1 per-tag lookups.
+ * Returns empty array if no tags exist or on error.
+ */
+export async function getTagList(repoPath: string): Promise<TagInfo[]> {
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
+
+    const raw = await git.raw([
+      "for-each-ref",
+      "refs/tags",
+      "--sort=-creatordate",
+      "--format=%(refname:short)%09%(objectname)%09%(creatordate:iso-strict)",
+    ]);
+
+    if (!raw || !raw.trim()) {
+      return [];
+    }
+
+    const tags: TagInfo[] = [];
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const parts = trimmed.split("\t");
+      const name = parts[0] ?? "";
+      const hash = parts[1] ?? "";
+      const date = parts[2] && parts[2].length > 0 ? parts[2] : null;
+
+      if (!name) continue;
+
+      tags.push({ name, hash, date });
+    }
+
+    return tags;
+  } catch {
+    return [];
+  }
+}
+
+export interface RangeCommitInfo {
+  hash: string;
+  shortHash: string;
+  message: string;
+  body: string;
+  author: string;
+  date: string;
+}
+
+/**
+ * Get all commits between two refs (exclusive of 'from', inclusive of 'to').
+ * Uses git log from..to format.
+ */
+export async function getCommitRange(
+  repoPath: string,
+  from: string,
+  to: string
+): Promise<RangeCommitInfo[]> {
+  try {
+    const validatedPath = validateRepoPath(repoPath);
+    const git = createGit(validatedPath);
+    const logResult = await git.log([`${from}..${to}`]);
+
+    return logResult.all.map((commit) => ({
+      hash: commit.hash,
+      shortHash: commit.hash.substring(0, 7),
+      message: commit.message,
+      body: commit.body || "",
+      author: commit.author_name,
+      date: commit.date,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Extract co-authors from commit body trailers.
+ * Looks for "Co-authored-by: Name <email>" lines.
+ * Returns array of author names (without email).
+ */
+export function extractCoAuthors(commitBody: string): string[] {
+  if (!commitBody) return [];
+  const regex = /Co-authored-by:\s*(.+?)\s*<[^>]+>/gi;
+  const names: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(commitBody)) !== null) {
+    const name = match[1].trim();
+    if (name) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
 /**
  * Extract ticket number from branch name using pattern
  */
