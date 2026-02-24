@@ -24,7 +24,6 @@ import {
   detectUncoveredFiles,
   generateBestEffortTitle,
   categorizeChanges,
-  generateStructuredBody,
   type ChangeSummaryGroup,
 } from "../utils/formatters.js";
 
@@ -69,6 +68,8 @@ export interface GenerateCommitMessageResult {
     type: string;
     scope: string | null;
     prefix: string;
+    /** Max characters available for the summary portion of the title (after prefix/type) */
+    availableSummaryLength: number;
   };
   changes: {
     fileCount: number;
@@ -87,7 +88,7 @@ export interface GenerateCommitMessageResult {
   changeSummary: ChangeSummaryGroup[];
   /** Files that the summary may not cover — hint to review */
   coverageWarnings: string[] | null;
-  /** Guidelines for AI when summary wasn't provided */
+  /** Guidelines for AI when composing/enhancing the commit message */
   commitGuidelines: string | null;
   errors: string[];
 }
@@ -138,6 +139,7 @@ export async function generateCommitMessage(
           type: "feat",
           scope: null,
           prefix: "",
+          availableSummaryLength: 0,
         },
         changes: {
           fileCount: 0,
@@ -220,6 +222,15 @@ export async function generateCommitMessage(
     summary = removeTrailingPeriod(summary);
   }
 
+  // Calculate prefix overhead so the AI knows the character budget for summaries
+  let prefixOverhead = prefix.length;
+  if (commitConfig.format === "conventional" || commitConfig.format === "angular") {
+    const typeFormat = commitConfig.typeFormat || "capitalized";
+    const includeScope = commitConfig.includeScope ?? false;
+    prefixOverhead += formatCommitType(type, typeFormat, scope, includeScope).length;
+  }
+  const availableSummaryLength = commitConfig.maxTitleLength - prefixOverhead;
+
   // Build title based on format
   let title: string;
 
@@ -255,43 +266,33 @@ export async function generateCommitMessage(
 
   if (title.length > commitConfig.maxTitleLength) {
     warnings.push(
-      `Title was ${title.length} characters (max: ${commitConfig.maxTitleLength}). ` +
-        `Auto-truncated; full text preserved in body.`
+      `Title is ${title.length} chars (max ${commitConfig.maxTitleLength}). ` +
+        `The prefix uses ${prefixOverhead} chars, leaving ${availableSummaryLength} for your summary. ` +
+        `Auto-truncated; pass a shorter summary to avoid this.`
     );
     truncatedSuggestion = truncate(title, commitConfig.maxTitleLength);
     titleSpillover = summary;
     title = truncateAtWordBoundary(title, commitConfig.maxTitleLength);
   }
 
-  // Determine if AI should generate/enhance the body from the diff
+  // Determine if AI should generate the body from the diff
   const needsBodyFromDiff = !needsAiRewrite && (input.includeBody || commitConfig.requireBody);
 
-  // Generate body from structured changes and/or title spillover
+  // Body generation strategy:
+  // - If title was truncated, preserve the full summary text as spillover in body
+  // - If includeBody requested, do NOT pre-generate a generic file-category listing.
+  //   Instead, provide the diff and guidelines so the AI writes a meaningful body
+  //   that describes what actually changed, not just which file types were touched.
   let body: string | null = null;
 
-  if (!needsAiRewrite && (titleSpillover || needsBodyFromDiff)) {
-    const bodyParts: string[] = [];
-
-    if (titleSpillover) {
-      bodyParts.push(titleSpillover);
-    }
-
-    if (needsBodyFromDiff && changeSummary.length > 0) {
-      const structuredBody = generateStructuredBody(changeSummary);
-      if (structuredBody) {
-        bodyParts.push(structuredBody);
-      }
-    }
-
-    if (bodyParts.length > 0) {
-      body = bodyParts.join("\n\n");
-    }
+  if (!needsAiRewrite && titleSpillover) {
+    body = titleSpillover;
   }
 
   const fullMessage = body ? `${title}\n\n${body}` : title;
   const valid = errors.length === 0;
 
-  // If AI needs to rewrite, provide diff and guidelines
+  // Guidelines for the AI to compose/enhance the commit message
   const commitGuidelines = needsAiRewrite
     ? `The title "${title}" is a PLACEHOLDER. You MUST rewrite it based on the diff.
 
@@ -301,7 +302,7 @@ make sure your message reflects the full scope of changes, not just part of them
 
 TITLE FORMAT:
 - Keep prefix "${prefix}" at the start
-- Aim for ~${commitConfig.maxTitleLength} characters or less (soft limit for readability)
+- Summary must be ${availableSummaryLength} characters or less (prefix uses ${prefixOverhead} chars)
 - Describe WHAT changed functionally (not which file)
 - Use imperative verbs: Add, Update, Fix, Remove, Migrate, Refactor
 - Be specific: "Fix suffix removal for usernames containing -by-" not "Update file"
@@ -331,19 +332,33 @@ With body:
 
 Show ONLY the final rewritten commit message to the user.`
     : needsBodyFromDiff
-      ? `A structured body has been auto-generated from file categories. Enhance it by
-analyzing changes.diff for more specific descriptions of what each change does.
+      ? `Write a commit body by analyzing the actual diff in changes.diff.
+Do NOT just list file categories or counts — describe what each change does.
+
+The changeSummary field groups files by type for reference, but the body should
+describe functional changes, not file types.
 
 BODY FORMAT:
-- Summarize what the changes actually do based on the diff content
-- Use "- " bullets for each distinct change
-- Describe functional impact: what was added, fixed, changed, or removed
-- Reference specific functions, classes, or config values when relevant
-- Keep bullets concise but meaningful
+- Use "- " bullets for each distinct functional change
+- Analyze the diff to understand what was added, fixed, changed, or removed
+- Reference specific functions, classes, endpoints, or config values when relevant
+- Keep each bullet to one concise sentence
+- NEVER list file categories (e.g., "Swift source: 6 files") — that's metadata, not a commit message
 - NEVER add file counts like "X files changed (+Y -Z lines)"
 - NEVER add "Ticket:" lines - ticket is already in the prefix
 
-Return ONLY the title + body as the commit message.`
+GOOD body example:
+"- Add UserProfile model with avatar and bio fields
+- Implement profile editing view with validation
+- Update navigation stack to include profile flow
+- Add unit tests for profile validation logic"
+
+BAD body example (DO NOT generate this):
+"- Swift source: 4 files
+- Markdown/docs: README.md
+- JSON: package.json"
+
+Return the title "${title}" followed by your body as the commit message.`
       : null;
 
   // Provide diff when AI needs to analyze content (for rewrite or body generation)
@@ -362,6 +377,7 @@ Return ONLY the title + body as the commit message.`
       type,
       scope,
       prefix,
+      availableSummaryLength,
     },
     changes: {
       fileCount: changes!.files.length,
@@ -394,8 +410,10 @@ TWO MODES:
 
 1. WITH summary parameter (recommended): Returns a ready-to-use commit message.
    Pass a brief description of what the changes do, and the tool formats it with
-   the proper prefix, capitalization, and validation. When includeBody is true,
-   the diff is provided so you can write a meaningful body.
+   the proper prefix, capitalization, and validation. Check context.availableSummaryLength
+   to see how many characters your summary can use (prefix uses the rest).
+   When includeBody is true, the diff and changeSummary are provided so YOU
+   can write a meaningful body — the tool does NOT auto-generate the body.
 
 2. WITHOUT summary: Returns context for YOU to compose the message.
    - 'title' is a best-effort PLACEHOLDER based on file patterns

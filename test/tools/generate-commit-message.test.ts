@@ -205,12 +205,13 @@ describe("generateCommitMessage", () => {
       expect(result.validation.warnings.some((w) => w.includes("imperative"))).toBe(true);
     });
 
-    it("should auto-truncate long titles and spill full text into body", async () => {
+    it("should auto-truncate long titles and report available character budget", async () => {
       const longSummary = "A".repeat(150);
       const result = await generateCommitMessage({ summary: longSummary }, testConfig);
 
       expect(result.title.length).toBeLessThanOrEqual(testConfig.commit.maxTitleLength);
       expect(result.validation.warnings.some((w) => w.includes("Auto-truncated"))).toBe(true);
+      expect(result.validation.warnings.some((w) => w.includes("leaving"))).toBe(true);
       expect(result.validation.truncatedSuggestion).not.toBeNull();
       expect(result.validation.truncatedSuggestion!.length).toBeLessThanOrEqual(
         testConfig.commit.maxTitleLength
@@ -222,22 +223,20 @@ describe("generateCommitMessage", () => {
       expect(result.fullMessage).toContain(longSummary);
     });
 
-    it("should generate structured body and diff when includeBody is true", async () => {
+    it("should provide diff and guidelines (not a pre-generated body) when includeBody is true", async () => {
       const result = await generateCommitMessage(
         { summary: "Add login", includeBody: true },
         testConfig
       );
 
-      expect(result.body).not.toBeNull();
-      expect(result.body).toContain("TypeScript");
-      expect(result.fullMessage).toContain(result.title);
-      expect(result.fullMessage).toContain(result.body!);
+      expect(result.body).toBeNull();
       expect(result.changes.diff).not.toBeNull();
       expect(result.commitGuidelines).not.toBeNull();
-      expect(result.commitGuidelines).toContain("structured body");
+      expect(result.commitGuidelines).toContain("analyzing the actual diff");
+      expect(result.commitGuidelines).toContain("DO NOT generate this");
     });
 
-    it("should generate detailed body for multi-file commits with includeBody", async () => {
+    it("should not pre-generate file-category body for multi-file commits", async () => {
       vi.mocked(getStagedChanges).mockResolvedValue({
         files: [
           { path: "src/Models/User.swift", additions: 50, deletions: 0, binary: false },
@@ -257,10 +256,11 @@ describe("generateCommitMessage", () => {
         testConfig
       );
 
-      expect(result.body).not.toBeNull();
-      expect(result.body).toContain("Swift source");
-      expect(result.body).toContain("Xcode project config");
-      expect(result.body).toContain("Markdown/docs");
+      expect(result.body).toBeNull();
+      expect(result.changes.diff).toBe("mock diff content");
+      expect(result.commitGuidelines).not.toBeNull();
+      expect(result.changeSummary.find((g) => g.category === "Swift source")).toBeDefined();
+      expect(result.changeSummary.find((g) => g.category === "Xcode project config")).toBeDefined();
     });
 
     it("should not include diff when summary provided without includeBody", async () => {
@@ -343,6 +343,16 @@ describe("generateCommitMessage", () => {
       const swiftGroup = result.changeSummary.find((g) => g.category === "Swift source");
       expect(swiftGroup).toBeDefined();
       expect(swiftGroup!.files).toHaveLength(2);
+    });
+
+    it("should expose availableSummaryLength accounting for prefix overhead", async () => {
+      const result = await generateCommitMessage({ summary: "Add login form" }, testConfig);
+
+      expect(result.context.availableSummaryLength).toBeDefined();
+      const prefixLen = result.context.prefix.length;
+      expect(result.context.availableSummaryLength).toBe(
+        testConfig.commit.maxTitleLength - prefixLen
+      );
     });
 
     it("should skip prefix on main branch", async () => {
