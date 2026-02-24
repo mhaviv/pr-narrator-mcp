@@ -47,7 +47,7 @@ export const generateChangelogSchema = z.object({
 
 export type GenerateChangelogInput = z.infer<typeof generateChangelogSchema>;
 
-export interface ChangelogEntry {
+interface ChangelogEntry {
   type: string;
   scope: string | null;
   title: string;
@@ -59,6 +59,8 @@ export interface ChangelogEntry {
 }
 
 export interface GenerateChangelogResult {
+  success: boolean;
+  errors: string[];
   changelog: string;
   entries: ChangelogEntry[];
   summary: string;
@@ -168,6 +170,8 @@ export async function generateChangelog(
   const format = input.format || "keepachangelog";
 
   const emptyResult: GenerateChangelogResult = {
+    success: true,
+    errors: [],
     changelog: "",
     entries: [],
     summary: "No changes",
@@ -185,8 +189,19 @@ export async function generateChangelog(
   let isToTag = false;
   let toTagName: string | null = null;
 
-  const validatedPath = validateRepoPath(repoPath);
-  const git = createGit(validatedPath);
+  let validatedPath: string;
+  let git: ReturnType<typeof createGit>;
+  try {
+    validatedPath = validateRepoPath(repoPath);
+    git = createGit(validatedPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ...emptyResult,
+      success: false,
+      errors: [`Failed to initialize git repository: ${message}`],
+    };
+  }
 
   if (!fromRef) {
     const tags = await getTagList(repoPath);
@@ -227,8 +242,9 @@ export async function generateChangelog(
     (!isFromTag && input.from) || (toRef !== "HEAD") ? await getTagList(repoPath) : [];
 
   if (!isFromTag && input.from) {
+    const fromInput = input.from;
     const matchingTag = tagListForLookup.find(
-      (t) => t.name === input.from || t.hash.startsWith(input.from!)
+      (t) => t.name === fromInput || t.hash.startsWith(fromInput)
     );
     if (matchingTag) {
       isFromTag = true;
@@ -252,6 +268,8 @@ export async function generateChangelog(
     warnings.push(`No commits found between ${fromRef} and ${toRef}.`);
     return {
       ...emptyResult,
+      success: true,
+      errors: [],
       range: { from: fromRef, to: toRef, fromDate, toDate },
     };
   }
@@ -350,6 +368,8 @@ export async function generateChangelog(
   const summary = generateSummaryLine(dedupedEntries);
 
   return {
+    success: true,
+    errors: [],
     changelog,
     entries: dedupedEntries,
     summary,

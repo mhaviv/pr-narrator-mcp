@@ -56,7 +56,7 @@ describe("generateChangelog", () => {
     ]);
 
     const mockGitRaw = vi.fn().mockResolvedValue("2024-06-01T00:00:00+00:00");
-    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as ReturnType<typeof createGit>);
+    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as unknown as ReturnType<typeof createGit>);
   });
 
   it("should generate basic changelog in keepachangelog format", async () => {
@@ -78,7 +78,7 @@ describe("generateChangelog", () => {
       .mockResolvedValueOnce("initial-sha\n")
       .mockResolvedValueOnce("2024-01-01T00:00:00+00:00")
       .mockResolvedValueOnce("2024-06-01T00:00:00+00:00");
-    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as ReturnType<typeof createGit>);
+    vi.mocked(createGit).mockReturnValue({ raw: mockGitRaw } as unknown as ReturnType<typeof createGit>);
 
     const result = await generateChangelog({}, testConfig);
 

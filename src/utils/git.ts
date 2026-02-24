@@ -552,45 +552,40 @@ export interface TagInfo {
 }
 
 /**
- * Get list of tags sorted by creation date (most recent first).
+ * Get list of tags sorted by creator date (most recent first).
+ * Uses a single `git for-each-ref` call to avoid N+1 per-tag lookups.
  * Returns empty array if no tags exist or on error.
  */
 export async function getTagList(repoPath: string): Promise<TagInfo[]> {
   try {
     const validatedPath = validateRepoPath(repoPath);
     const git = createGit(validatedPath);
-    const tagsResult = await git.tags();
 
-    if (!tagsResult.all || tagsResult.all.length === 0) {
+    const raw = await git.raw([
+      "for-each-ref",
+      "refs/tags",
+      "--sort=-creatordate",
+      "--format=%(refname:short)%09%(objectname)%09%(creatordate:iso-strict)",
+    ]);
+
+    if (!raw || !raw.trim()) {
       return [];
     }
 
     const tags: TagInfo[] = [];
-    for (const tagName of tagsResult.all) {
-      try {
-        const info = await git.raw(["log", "-1", "--format=%H %aI", tagName]);
-        const trimmed = info.trim();
-        const spaceIdx = trimmed.indexOf(" ");
-        if (spaceIdx > 0) {
-          tags.push({
-            name: tagName,
-            hash: trimmed.substring(0, spaceIdx),
-            date: trimmed.substring(spaceIdx + 1),
-          });
-        } else {
-          tags.push({ name: tagName, hash: trimmed, date: null });
-        }
-      } catch {
-        tags.push({ name: tagName, hash: "", date: null });
-      }
-    }
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
 
-    tags.sort((a, b) => {
-      if (!a.date && !b.date) return 0;
-      if (!a.date) return 1;
-      if (!b.date) return -1;
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
+      const parts = trimmed.split("\t");
+      const name = parts[0] ?? "";
+      const hash = parts[1] ?? "";
+      const date = parts[2] && parts[2].length > 0 ? parts[2] : null;
+
+      if (!name) continue;
+
+      tags.push({ name, hash, date });
+    }
 
     return tags;
   } catch {

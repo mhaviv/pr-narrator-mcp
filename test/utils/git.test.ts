@@ -353,39 +353,39 @@ describe("git utilities", () => {
       vi.clearAllMocks();
     });
 
-    it("should return tags sorted by date descending", async () => {
-      mockTags.mockResolvedValue({ all: ["v1.0.0", "v1.1.0"] });
-      mockRaw
-        .mockResolvedValueOnce("aaa1111 2024-01-01T00:00:00+00:00")
-        .mockResolvedValueOnce("bbb2222 2024-06-01T00:00:00+00:00");
+    it("should return tags sorted by creator date descending", async () => {
+      mockRaw.mockResolvedValueOnce(
+        "v1.1.0\tbbb2222\t2024-06-01T00:00:00+00:00\nv1.0.0\taaa1111\t2024-01-01T00:00:00+00:00\n"
+      );
 
       const result = await getTagList("/fake/path");
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe("v1.1.0");
       expect(result[0].hash).toBe("bbb2222");
+      expect(result[0].date).toBe("2024-06-01T00:00:00+00:00");
       expect(result[1].name).toBe("v1.0.0");
+      expect(result[1].hash).toBe("aaa1111");
     });
 
     it("should return empty array when no tags exist", async () => {
-      mockTags.mockResolvedValue({ all: [] });
+      mockRaw.mockResolvedValueOnce("");
       const result = await getTagList("/fake/path");
       expect(result).toEqual([]);
     });
 
     it("should handle errors gracefully", async () => {
-      mockTags.mockRejectedValue(new Error("git error"));
+      mockRaw.mockRejectedValueOnce(new Error("git error"));
       const result = await getTagList("/fake/path");
       expect(result).toEqual([]);
     });
 
-    it("should handle tag info retrieval failure", async () => {
-      mockTags.mockResolvedValue({ all: ["v1.0.0"] });
-      mockRaw.mockRejectedValue(new Error("not found"));
+    it("should handle tags with missing date", async () => {
+      mockRaw.mockResolvedValueOnce("v1.0.0\taaa1111\t\n");
 
       const result = await getTagList("/fake/path");
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe("v1.0.0");
-      expect(result[0].hash).toBe("");
+      expect(result[0].hash).toBe("aaa1111");
       expect(result[0].date).toBeNull();
     });
   });
