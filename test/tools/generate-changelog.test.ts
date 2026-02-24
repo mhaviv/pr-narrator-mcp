@@ -156,6 +156,21 @@ describe("generateChangelog", () => {
     expect(result.changelog).toContain("### No Ticket");
   });
 
+  it("should parse conventional commits case-insensitively", async () => {
+    vi.mocked(getCommitRange).mockResolvedValue([
+      makeCommit({ message: "FEAT: uppercase feature", shortHash: "aaa1111" }),
+      makeCommit({ message: "Fix: title-case fix", shortHash: "bbb2222" }),
+      makeCommit({ message: "CHORE(deps): update deps", shortHash: "ccc3333" }),
+    ]);
+
+    const result = await generateChangelog({}, testConfig);
+
+    expect(result.entries.find((e) => e.title === "uppercase feature")?.type).toBe("feat");
+    expect(result.entries.find((e) => e.title === "title-case fix")?.type).toBe("fix");
+    expect(result.entries.find((e) => e.title === "update deps")?.type).toBe("chore");
+    expect(result.entries.find((e) => e.title === "update deps")?.scope).toBe("deps");
+  });
+
   it("should infer types from non-conventional commits", async () => {
     vi.mocked(getCommitRange).mockResolvedValue([
       makeCommit({ message: "Fix login issue", shortHash: "aaa1111" }),

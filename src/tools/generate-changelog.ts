@@ -33,16 +33,16 @@ export const generateChangelogSchema = z.object({
     .describe("End ref. Defaults to HEAD."),
   groupBy: z
     .enum(["type", "scope", "ticket"])
-    .optional()
-    .describe("How to group changelog entries. Default: 'type'."),
+    .default("type")
+    .describe("How to group changelog entries."),
   includeAuthors: z
     .boolean()
-    .optional()
-    .describe("Include contributor attribution. Default: true."),
+    .default(true)
+    .describe("Include contributor attribution."),
   format: z
     .enum(["keepachangelog", "github-release", "plain"])
-    .optional()
-    .describe("Output format. Default: 'keepachangelog'."),
+    .default("keepachangelog")
+    .describe("Output format."),
 });
 
 export type GenerateChangelogInput = z.infer<typeof generateChangelogSchema>;
@@ -81,7 +81,7 @@ export interface GenerateChangelogResult {
 const MAX_COMMITS = 10_000;
 
 const CONVENTIONAL_REGEX =
-  /^(feat|fix|docs|style|refactor|test|chore|ci|build|perf|revert)(\(([^)]+)\))?(!)?\s*:\s*(.+)/;
+  /^(feat|fix|docs|style|refactor|test|chore|ci|build|perf|revert)(\(([^)]+)\))?(!)?\s*:\s*(.+)/i;
 
 const KEYWORD_MAP: Array<{ keywords: string[]; type: string }> = [
   { keywords: ["fix", "fixed", "fixes"], type: "fix" },
@@ -114,7 +114,7 @@ function stripTypePrefix(message: string): string {
 function parseCommitType(message: string): { type: string; scope: string | null } {
   const match = message.match(CONVENTIONAL_REGEX);
   if (match) {
-    return { type: match[1], scope: match[3] || null };
+    return { type: match[1].toLowerCase(), scope: match[3]?.toLowerCase() || null };
   }
   return { type: inferTypeFromMessage(message), scope: null };
 }
@@ -165,9 +165,9 @@ export async function generateChangelog(
 ): Promise<GenerateChangelogResult> {
   const warnings: string[] = [];
   const repoPath = input.repoPath || config.defaultRepoPath || process.cwd();
-  const groupBy = input.groupBy || "type";
+  const groupBy = input.groupBy ?? "type";
   const includeAuthors = input.includeAuthors ?? true;
-  const format = input.format || "keepachangelog";
+  const format = input.format ?? "keepachangelog";
 
   const emptyResult: GenerateChangelogResult = {
     success: true,
@@ -532,16 +532,19 @@ changed between two versions.`,
       groupBy: {
         type: "string",
         enum: ["type", "scope", "ticket"],
-        description: "How to group changelog entries. Default: 'type'.",
+        default: "type",
+        description: "How to group changelog entries.",
       },
       includeAuthors: {
         type: "boolean",
-        description: "Include contributor attribution. Default: true.",
+        default: true,
+        description: "Include contributor attribution.",
       },
       format: {
         type: "string",
         enum: ["keepachangelog", "github-release", "plain"],
-        description: "Output format. Default: 'keepachangelog'.",
+        default: "keepachangelog",
+        description: "Output format.",
       },
     },
   },

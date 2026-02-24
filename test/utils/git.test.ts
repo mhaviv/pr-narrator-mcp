@@ -8,6 +8,7 @@ import {
 
 // Create mock functions
 const mockRaw = vi.fn();
+const mockBranch = vi.fn();
 const mockBranchLocal = vi.fn();
 const mockTags = vi.fn();
 const mockLog = vi.fn();
@@ -16,6 +17,7 @@ const mockLog = vi.fn();
 vi.mock("simple-git", () => ({
   default: vi.fn(() => ({
     raw: mockRaw,
+    branch: mockBranch,
     branchLocal: mockBranchLocal,
     tags: mockTags,
     log: mockLog,
@@ -201,15 +203,14 @@ describe("git utilities", () => {
     });
 
     it("should use configured branch when explicitly set", async () => {
-      mockBranchLocal.mockResolvedValue({ all: ["main", "develop"], current: "feature/test" });
+      mockBranch.mockResolvedValue({ all: ["main", "develop"], current: "feature/test" });
       
       const result = await getDefaultBranch("/fake/path", "develop");
       expect(result).toBe("develop");
     });
 
     it("should pick first candidate when multiple exist", async () => {
-      // main comes before develop/master in the candidates list
-      mockBranchLocal.mockResolvedValue({ all: ["main", "develop", "feature/test"], current: "feature/test" });
+      mockBranch.mockResolvedValue({ all: ["main", "develop", "feature/test"], current: "feature/test" });
       mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
@@ -217,7 +218,7 @@ describe("git utilities", () => {
     });
 
     it("should try origin HEAD when no common branches", async () => {
-      mockBranchLocal.mockResolvedValue({ all: ["feature/test"], current: "feature/test" });
+      mockBranch.mockResolvedValue({ all: ["feature/test"], current: "feature/test" });
       mockRaw.mockResolvedValue("refs/remotes/origin/main\n");
 
       const result = await getDefaultBranch("/fake/path");
@@ -225,7 +226,7 @@ describe("git utilities", () => {
     });
 
     it("should default to 'main' when no branches found", async () => {
-      mockBranchLocal.mockResolvedValue({ all: [], current: "" });
+      mockBranch.mockResolvedValue({ all: [], current: "" });
       mockRaw.mockRejectedValue(new Error("not found"));
 
       const result = await getDefaultBranch("/fake/path");
