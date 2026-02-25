@@ -27,18 +27,12 @@ export const generateChangelogSchema = z.object({
     .describe(
       "Start ref — tag, SHA, or branch. Defaults to the latest tag. If no tags exist, uses the initial commit."
     ),
-  to: z
-    .string()
-    .optional()
-    .describe("End ref. Defaults to HEAD."),
+  to: z.string().optional().describe("End ref. Defaults to HEAD."),
   groupBy: z
     .enum(["type", "scope", "ticket"])
     .default("type")
     .describe("How to group changelog entries."),
-  includeAuthors: z
-    .boolean()
-    .default(true)
-    .describe("Include contributor attribution."),
+  includeAuthors: z.boolean().default(true).describe("Include contributor attribution."),
   format: z
     .enum(["keepachangelog", "github-release", "plain"])
     .default("keepachangelog")
@@ -81,20 +75,41 @@ export interface GenerateChangelogResult {
 const MAX_COMMITS = 10_000;
 
 const CONVENTIONAL_REGEX =
-  /^(feat|fix|docs|style|refactor|test|chore|ci|build|perf|revert)(\(([^)]+)\))?(!)?\s*:\s*(.+)/i;
+  /^(feat|feature|fix|bugfix|hotfix|docs|style|refactor|test|chore|ci|build|perf|revert)(\(([^)]+)\))?(!)?\s*:\s*(.+)/i;
+
+const TYPE_ALIASES: Record<string, string> = {
+  feature: "feat",
+  bugfix: "fix",
+  hotfix: "fix",
+};
 
 const KEYWORD_MAP: Array<{ keywords: string[]; type: string }> = [
-  { keywords: ["fix", "fixed", "fixes"], type: "fix" },
-  { keywords: ["add", "added", "adds"], type: "feat" },
-  { keywords: ["update", "updated", "updates"], type: "feat" },
-  { keywords: ["remove", "removed", "removes"], type: "refactor" },
-  { keywords: ["refactor", "refactored", "refactors"], type: "refactor" },
+  { keywords: ["fix", "fixed", "fixes", "bugfix", "hotfix"], type: "fix" },
+  {
+    keywords: ["add", "added", "adds", "feature", "feat", "implement", "implemented"],
+    type: "feat",
+  },
+  { keywords: ["update", "updated", "updates", "upgrade", "upgraded", "bump"], type: "feat" },
+  { keywords: ["remove", "removed", "removes", "delete", "deleted"], type: "refactor" },
+  {
+    keywords: ["refactor", "refactored", "refactors", "restructure", "reorganize"],
+    type: "refactor",
+  },
+  { keywords: ["move", "moved", "rename", "renamed", "migrate", "migrated"], type: "refactor" },
   { keywords: ["test", "tests", "testing"], type: "test" },
   { keywords: ["doc", "docs", "readme", "document"], type: "docs" },
+  { keywords: ["chore", "maintain", "maintenance", "cleanup"], type: "chore" },
+  { keywords: ["ci", "pipeline", "workflow"], type: "ci" },
+  { keywords: ["build", "compile"], type: "build" },
+  { keywords: ["perf", "performance", "optimize", "optimized"], type: "perf" },
+  { keywords: ["style", "format", "formatted", "formatting", "lint"], type: "style" },
+  { keywords: ["revert", "reverted", "reverts"], type: "revert" },
+  { keywords: ["improve", "improved", "improves", "enhance", "enhanced"], type: "feat" },
 ];
 
 function inferTypeFromMessage(message: string): string {
-  const firstWord = message.split(/\s+/)[0]?.toLowerCase() || "";
+  const rawFirstWord = message.split(/\s+/)[0]?.toLowerCase() || "";
+  const firstWord = rawFirstWord.replace(/[:.!,]+$/, "");
   for (const { keywords, type } of KEYWORD_MAP) {
     if (keywords.includes(firstWord)) {
       return type;
@@ -114,7 +129,9 @@ function stripTypePrefix(message: string): string {
 function parseCommitType(message: string): { type: string; scope: string | null } {
   const match = message.match(CONVENTIONAL_REGEX);
   if (match) {
-    return { type: match[1].toLowerCase(), scope: match[3]?.toLowerCase() || null };
+    const rawType = match[1].toLowerCase();
+    const type = TYPE_ALIASES[rawType] || rawType;
+    return { type, scope: match[3]?.toLowerCase() || null };
   }
   return { type: inferTypeFromMessage(message), scope: null };
 }
@@ -239,7 +256,7 @@ export async function generateChangelog(
 
   // Check if refs are tags (for header formatting)
   const tagListForLookup =
-    (!isFromTag && input.from) || (toRef !== "HEAD") ? await getTagList(repoPath) : [];
+    (!isFromTag && input.from) || toRef !== "HEAD" ? await getTagList(repoPath) : [];
 
   if (!isFromTag && input.from) {
     const fromInput = input.from;
